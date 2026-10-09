@@ -1,0 +1,137 @@
+
+===== codex --version =====
+codex-cli 0.149.0
+
+===== where codex =====
+C:\Users\Administrator\AppData\Roaming\npm\codex
+C:\Users\Administrator\AppData\Roaming\npm\codex.cmd
+
+===== codex app-server daemon version (Windows expectation: unsupported) =====
+Error: codex app-server daemon lifecycle is only supported on Unix platforms
+
+===== AppX package OpenAI.Codex =====
+Name            : OpenAI.Codex
+Version         : 26.901.6511.0
+InstallLocation : C:\Program Files\WindowsApps\OpenAI.Codex_26.901.6511.0_x64__2p2nqsd0c76g0
+Status          : Ok
+
+===== running codex processes (id, name, start) =====
+Id ProcessName                  StartTime         
+    -- -----------                  ---------         
+ 25076 codex                        2026/10/9 23:43:48
+107252 codex-code-mode-host         2026/10/9 23:48:53
+ 51956 codex                        2026/10/9 23:58:52
+ 94896 codex                        2026/10/9 23:58:52
+ 68176 codex-command-runner-0.153.4 2026/10/9 23:58:52
+106716 codex-command-runner-0.153.4 2026/10/9 23:58:52
+ 19824 codex                        2026/10/9 23:58:52
+
+===== codex app-server launcher command lines =====
+25076 :: C:\Users\Administrator\AppData\Local\OpenAI\Codex\bin\8e5b6932251c2c1c\codex.exe -c features.code_mode_host=true app-server --analytics-default-enabled -c "mcp_servers.codex_app={\"command\"=\"cmd.exe\",\"args\"=[\"/d\",\"/s\",\"/c\",\"call\",\"./scripts/launch_codex_app_tools_mcp.cmd\",\"./server.mjs\"],\"cwd\"=\"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.901.6511.0_x64__2p2nqsd0c76g0\\app\\resources\\plugins\\openai-bundled\\plugins\\codex-app-tools\",\"enabled\"=true,\"default_tools_approval_mode\"=\"approve\",\"tools\"={\"automation_update\"={\"approval_mode\"=\"prompt\"},\"create_thread\"={\"approval_mode\"=\"prompt\"},\"send_message_to_thread\"={\"approval_mode\"=\"prompt\"},\"fork_thread\"={\"approval_mode\"=\"prompt\"},\"handoff_thread\"={\"approval_mode\"=\"prompt\"}},\"env_vars\"=[\"CODEX_APP_TOOLS_PIPE_PATH\",\"CODEX_MCP_NODE_PATH\",\"CODEX_BROWSER_USE_NODE_PATH\",\"CODEX_ELECTRON_RESOURCES_PATH\",\"CODEX_CLI_PATH\",\"XDG_CACHE_HOME\",\"HOME\",\"USERPROFILE\",\"LOCALAPPDATA\",\"PATH\"],\"startup_timeout_sec\"=10,\"tool_timeout_sec\"=3600,\"omit_tools_from\"=[\"deferred\"],\"env\"={\"CODEX_APP_TOOLS_PIPE_PATH\"=\"\\\\.\\pipe\\codex-browser-use-2360a70c-133b-4a71-a270-5b08039dc6c4\",\"CODEX_MCP_NODE_PATH\"=\"C:\\Users\\Administrator\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\b474a88d5d105afa\\bin\\node.exe\"}}"
+51956 :: "C:\Users\Administrator\AppData\Local\OpenAI\Codex\bin\8e5b6932251c2c1c\codex.exe" sandbox -c shell_environment_policy.inherit=\"all\" -c default_permissions=\"node_repl\" -c "permissions.node_repl={filesystem = {\":root\" = \"read\", \":slash_tmp\" = \"write\", \":tmpdir\" = \"write\", \"C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\.tmp8vAGMA\" = \"read\", \"C:\\Users\\Administrator\\.codex\\visualizations\\2026\\10\\09\\01a12156-89b7-7282-a869-f3b1402ad97e\" = \"write\", \"C:\\Users\\Administrator\\.codex\\visualizations\\2026\\10\\09\\01a12156-89b7-7282-a869-f3b1402ad97e\\.agents\" = \"read\", \"C:\\Users\\Administrator\\.codex\\visualizations\\2026\\10\\09\\01a12156-89b7-7282-a869-f3b1402ad97e\\.codex\" = \"read\", \"C:\\Users\\Administrator\\.codex\\visualizations\\2026\\10\\09\\01a12156-89b7-7282-a869-f3b1402ad97e\\.git\" = \"read\", \"C:\\Users\\Administrator\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\b474a88d5d105afa\\bin\" = \"read\", \"C:\\Users\\Administrator\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\b474a88d5d105afa\\bin\\node_modules\" = \"read\", \"C:\\Users\\Administrator\\Documents\\Codex\" = \"write\", \"C:\\Users\\Administrator\\Documents\\Codex\\.agents\" = \"read\", \"C:\\Users\\Administrator\\Documents\\Codex\\.codex\" = \"read\", \"C:\\Users\\Administrator\\Documents\\Codex\\.git\" = \"read\", \"C:\\Users\\Administrator\\Documents\\Codex\\2026-10-09\\new-chat\" = \"write\", \"C:\\Users\\Administrator\\Documents\\Codex\\2026-10-09\\new-chat\\.agents\" = \"read\", \"C:\\Users\\Administrator\\Documents\\Codex\\2026-10-09\\new-chat\\.codex\" = \"read\", \"C:\\Users\\Administrator\\Documents\\Codex\\2026-10-09\\new-chat\\.git\" = \"read\", \"\\\\?\\C:\\Users\\Administrator\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\b474a88d5d105afa\\bin\" = \"read\"}, network = {enabled = false}}" -- C:\Users\Administrator\AppData\Local\OpenAI\Codex\runtimes\cua_node\b474a88d5d105afa\bin\node.exe --experimental-vm-modules --eval "// Node's emulated realpath walks every ancestor. Windows may allow the target
+// while denying metadata on an ancestor (notably AppData). Keep normal Node
+// resolution, including symlink identity, and retry that failure using a handle
+// to the target. This grants no access and does not bypass reads or trust checks.
+const fs = require(\"node:fs\");
+const originalRealpathSync = fs.realpathSync;
+fs.realpathSync = Object.assign(
+  function realpathSync(path, options) {
+    try {
+      return originalRealpathSync(path, options);
+    } catch (error) {
+      if (
+        error?.syscall !== \"lstat\" ||
+        (error.code !== \"EPERM\" && error.code !== \"EACCES\")
+      ) {
+        throw error;
+      }
+      try {
+        return originalRealpathSync.native(path, options);
+      } catch {
+        throw error;
+      }
+    }
+  },
+  { native: originalRealpathSync.native },
+);
+
+// --eval leaves the script at argv[1]. Use Node's ordinary main-module loader
+// so argv, require.main, and relative imports keep their normal meaning.
+require(\"node:module\").runMain();
+" C:\Users\ADMINI~1\AppData\Local\Temp\.tmp8vAGMA\kernel.js --session-id 208f2cb3906043d0a13173466097a38e --working-dir C:\Users\Administrator\Documents\Codex\2026-10-09\new-chat
+94896 :: "C:\Users\Administrator\AppData\Local\OpenAI\Codex\bin\8e5b6932251c2c1c\codex.exe" sandbox -c shell_environment_policy.inherit=\"all\" -c default_permissions=\"node_repl\" -c "permissions.node_repl={filesystem = {\":root\" = \"read\", \":slash_tmp\" = \"write\", \":tmpdir\" = \"write\", \"C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\.tmp8vAGMA\" = \"read\", \"C:\\Users\\Administrator\\.codex\\visualizations\\2026\\10\\09\\01a12156-89b7-7282-a869-f3b1402ad97e\" = \"write\", \"C:\\Users\\Administrator\\.codex\\visualizations\\2026\\10\\09\\01a12156-89b7-7282-a869-f3b1402ad97e\\.agents\" = \"read\", \"C:\\Users\\Administrator\\.codex\\visualizations\\2026\\10\\09\\01a12156-89b7-7282-a869-f3b1402ad97e\\.codex\" = \"read\", \"C:\\Users\\Administrator\\.codex\\visualizations\\2026\\10\\09\\01a12156-89b7-7282-a869-f3b1402ad97e\\.git\" = \"read\", \"C:\\Users\\Administrator\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\b474a88d5d105afa\\bin\" = \"read\", \"C:\\Users\\Administrator\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\b474a88d5d105afa\\bin\\node_modules\" = \"read\", \"C:\\Users\\Administrator\\Documents\\Codex\" = \"write\", \"C:\\Users\\Administrator\\Documents\\Codex\\.agents\" = \"read\", \"C:\\Users\\Administrator\\Documents\\Codex\\.codex\" = \"read\", \"C:\\Users\\Administrator\\Documents\\Codex\\.git\" = \"read\", \"C:\\Users\\Administrator\\Documents\\Codex\\2026-10-09\\new-chat\" = \"write\", \"C:\\Users\\Administrator\\Documents\\Codex\\2026-10-09\\new-chat\\.agents\" = \"read\", \"C:\\Users\\Administrator\\Documents\\Codex\\2026-10-09\\new-chat\\.codex\" = \"read\", \"C:\\Users\\Administrator\\Documents\\Codex\\2026-10-09\\new-chat\\.git\" = \"read\", \"\\\\?\\C:\\Users\\Administrator\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\b474a88d5d105afa\\bin\" = \"read\"}, network = {enabled = false}}" -- C:\Users\Administrator\AppData\Local\OpenAI\Codex\runtimes\cua_node\b474a88d5d105afa\bin\node.exe --experimental-vm-modules --eval "// Node's emulated realpath walks every ancestor. Windows may allow the target
+// while denying metadata on an ancestor (notably AppData). Keep normal Node
+// resolution, including symlink identity, and retry that failure using a handle
+// to the target. This grants no access and does not bypass reads or trust checks.
+const fs = require(\"node:fs\");
+const originalRealpathSync = fs.realpathSync;
+fs.realpathSync = Object.assign(
+  function realpathSync(path, options) {
+    try {
+      return originalRealpathSync(path, options);
+    } catch (error) {
+      if (
+        error?.syscall !== \"lstat\" ||
+        (error.code !== \"EPERM\" && error.code !== \"EACCES\")
+      ) {
+        throw error;
+      }
+      try {
+        return originalRealpathSync.native(path, options);
+      } catch {
+        throw error;
+      }
+    }
+  },
+  { native: originalRealpathSync.native },
+);
+
+// --eval leaves the script at argv[1]. Use Node's ordinary main-module loader
+// so argv, require.main, and relative imports keep their normal meaning.
+require(\"node:module\").runMain();
+" C:\Users\ADMINI~1\AppData\Local\Temp\.tmp8vAGMA\trusted-worker.js C:\Users\Administrator\Documents\Codex\2026-10-09\new-chat
+19824 :: "C:\Users\Administrator\AppData\Local\OpenAI\Codex\bin\8e5b6932251c2c1c\codex.exe" app-server --listen stdio://
+
+===== %USERPROFILE%\.codex key files =====
+  config.toml                              bytes=12118
+  auth.json                                bytes=4010
+  session_index.jsonl                      bytes=362998
+  thread_history_1.sqlite                  bytes=8050098176
+  state_5.sqlite                           bytes=280915968
+  logs_2.sqlite                            bytes=640241664
+  goals_1.sqlite                           bytes=135168
+  memories_1.sqlite                        bytes=536576
+  queue_1.sqlite                           bytes=45056
+  models_cache.json                        bytes=229249
+  external_agent_session_imports.json      bytes=1784
+  dir sessions                             exists=True
+  dir archived_sessions                    exists=True
+  dir thread-writer-locks                  exists=True
+  dir skills                               exists=True
+  dir agents                               exists=True
+
+===== config.toml key lines (no secrets) =====
+  model = "gpt-6-astra"
+  disable_response_storage = true
+  approval_policy = "never"
+  approvals_reviewer = "user"
+  sandbox_mode = "workspace-write"
+  service_tier = "default"
+  notify = [ "C:\\Users\\Administrator\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\b474a88d5d105afa\\bin\\node_modules\\@oai\\sky\\bin\\windows\\codex-computer-use.exe", "turn-ended" ]
+  model_provider = "openai"
+  CODEX_CLI_PATH = 'C:\Users\Administrator\AppData\Local\OpenAI\Codex\bin\8e5b6932251c2c1c\codex.exe'
+  [desktop] present: True
+
+===== auth.json auth_mode only (tokens NOT printed) =====
+  auth_mode = chatgpt
+  OPENAI_API_KEY empty = True
+  token fields present = ['OPENAI_API_KEY', 'auth_mode', 'last_refresh', 'tokens']
+
+===== messenger script =====
+  C:\Users\Administrator\.codex\skills\deepseek-thread-messenger\scripts\messenger.py             exists=True
+  C:\Users\Administrator\.codex\skills\deepseek-thread-messenger\SKILL.md                         exists=True
+  C:\Users\Administrator\.codex\skills\deepseek-thread-messenger\references\protocol-contract.md  exists=True
+
+===== models_cache.json model ids =====
+  codex-auto-review, gpt-5.5, gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-6-astra, gpt-reserve, priority
+DONE
