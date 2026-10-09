@@ -1,0 +1,45 @@
+{
+  "started_at": "2026-10-09T19:29:35.645Z",
+  "mode": "real",
+  "model": "gpt-5.6-luna",
+  "steps": [
+    {
+      "label": "B->A->B",
+      "request_id": "r-de918a890dc49c40",
+      "status": {
+        "request_id": "r-de918a890dc49c40",
+        "root_request_id": "r-de918a890dc49c40",
+        "chain_depth": 0,
+        "from_conv": "c-ti2h9d",
+        "to_conv": "c-oihv01",
+        "type": "TASK",
+        "delivery_status": "device_received",
+        "exec_status": "completed",
+        "return_status": "cloud_saved",
+        "result_missing": false,
+        "turn_id": "01a12224-8fcd-7152-9008-aa2b332fb802",
+        "created_at": 1791574183852,
+        "completed_at": 1791574187527,
+        "expires_at": 1791660583852
+      },
+      "results": [
+        {
+          "kind": "RESULT",
+          "is_first": true,
+          "body": "RELAY-B2A-OK"
+        }
+      ],
+      "turn_id": "01a12224-8fcd-7152-9008-aa2b332fb802",
+      "delivery_turn_id": "01a12224-9e2d-7bb2-8fb7-f36cf8d6867f",
+      "origin_readback": "thread/read unavailable (rollout not readable in real stack)"
+    }
+  ],
+  "threads": {
+    "threadA": "01a12224-8417-7630-95b8-794f938a84b6",
+    "threadB": "01a12224-8d28-7d31-a5ce-0c64748aa110",
+    "convA": "c-oihv01",
+    "convB": "c-ti2h9d"
+  },
+  "finished_at": "2026-10-09T19:30:48.046Z",
+  "ok": true
+}

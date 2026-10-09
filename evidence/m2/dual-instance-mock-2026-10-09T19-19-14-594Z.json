@@ -1,0 +1,75 @@
+{
+  "started_at": "2026-10-09T19:19:14.882Z",
+  "mode": "mock",
+  "model": "gpt-5.6-luna",
+  "steps": [
+    {
+      "label": "A->B->A",
+      "request_id": "r-b155bbc404badb7b",
+      "status": {
+        "request_id": "r-b155bbc404badb7b",
+        "root_request_id": "r-b155bbc404badb7b",
+        "chain_depth": 0,
+        "from_conv": "c-me2ji6",
+        "to_conv": "c-ake7en",
+        "type": "TASK",
+        "delivery_status": "device_received",
+        "exec_status": "completed",
+        "return_status": "cloud_saved",
+        "result_missing": false,
+        "turn_id": "18cad908-dcf4-4dd4-bce7-ea4dd0cd2255",
+        "created_at": 1791573561842,
+        "completed_at": 1791573561954,
+        "expires_at": 1791659961842
+      },
+      "results": [
+        {
+          "kind": "RESULT",
+          "is_first": true,
+          "body": "MOCK-REPLY [[relay:r-b155bbc404badb7b]]\nTASK from c-me2ji6\n\nReply with exactly: RELAY-A2B-OK"
+        }
+      ],
+      "turn_id": "18cad908-dcf4-4dd4-bce7-ea4dd0cd2255",
+      "origin_turns": 1,
+      "origin_has_result": true
+    },
+    {
+      "label": "B->A->B",
+      "request_id": "r-11dd7cc5153aac5f",
+      "status": {
+        "request_id": "r-11dd7cc5153aac5f",
+        "root_request_id": "r-11dd7cc5153aac5f",
+        "chain_depth": 0,
+        "from_conv": "c-ake7en",
+        "to_conv": "c-me2ji6",
+        "type": "TASK",
+        "delivery_status": "device_received",
+        "exec_status": "completed",
+        "return_status": "cloud_saved",
+        "result_missing": false,
+        "turn_id": "1b461a16-7cac-493a-85cb-3bf6fd16d1d3",
+        "created_at": 1791573562142,
+        "completed_at": 1791573562242,
+        "expires_at": 1791659962142
+      },
+      "results": [
+        {
+          "kind": "RESULT",
+          "is_first": true,
+          "body": "MOCK-REPLY [[relay:r-11dd7cc5153aac5f]]\nTASK from c-ake7en\n\nReply with exactly: RELAY-B2A-OK"
+        }
+      ],
+      "turn_id": "1b461a16-7cac-493a-85cb-3bf6fd16d1d3",
+      "origin_turns": 2,
+      "origin_has_result": true
+    }
+  ],
+  "threads": {
+    "threadA": "85d57afb-4a44-4e02-8d2e-e11105062e79",
+    "threadB": "3c02b34a-a071-4a82-b9a2-7a116db78981",
+    "convA": "c-me2ji6",
+    "convB": "c-ake7en"
+  },
+  "finished_at": "2026-10-09T19:19:22.414Z",
+  "ok": true
+}

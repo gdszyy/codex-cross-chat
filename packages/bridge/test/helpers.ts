@@ -6,8 +6,10 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createRelay, type Relay } from '@relay/relay/src/server.js';
-import { openPglite } from '@relay/relay/src/db.js';
+// Relative cross-package import: the relay package is a sibling workspace
+// package; this keeps the bridge tests driving the *real* relay chain.
+import { createRelay, type Relay } from '../../relay/src/server.js';
+import { openPglite } from '../../relay/src/db.js';
 import { Bridge, type Binding } from '../src/bridge.js';
 import { LocalState } from '../src/state.js';
 import { openLocalPg } from '../src/db.js';
@@ -71,13 +73,18 @@ export async function startBridge(
     allowSources?: string[];
     cwd: string;
     mockStateFile?: string;
-    turnTimeoutMs?: number;
     mockFault?: string;
+    mockDelayMs?: number;
+    turnTimeoutMs?: number;
     heartbeatMs?: number;
+    stateDir?: string;
+    /** Reuse an existing local state store (simulates an in-process restart). */
+    state?: LocalState;
   },
 ): Promise<BridgeHandle> {
-  const db = await openLocalPg();
-  const state = new LocalState(db);
+  if (input.stateDir && !input.state) await fs.promises.mkdir(input.stateDir, { recursive: true });
+  const db = input.state ? null : await openLocalPg(input.stateDir);
+  const state = input.state ?? new LocalState(db!);
   await state.init();
   const bridge = new Bridge({
     relayUrl: env.baseUrl,
@@ -85,6 +92,11 @@ export async function startBridge(
     profile: 'default',
     codexCommand: process.execPath,
     codexArgs: [MOCK_PATH],
+    codexEnv: {
+      ...(input.mockStateFile ? { MOCK_STATE_FILE: input.mockStateFile } : {}),
+      ...(input.mockFault ? { MOCK_FAULT: input.mockFault } : {}),
+      ...(input.mockDelayMs !== undefined ? { MOCK_DELAY_MS: String(input.mockDelayMs) } : {}),
+    },
     model: 'gpt-5.6-luna',
     cwd: input.cwd,
     bindings: input.bindings,
@@ -93,8 +105,6 @@ export async function startBridge(
     heartbeatMs: input.heartbeatMs ?? 30_000,
     onLog: () => {},
   });
-  process.env.MOCK_STATE_FILE = input.mockStateFile ?? '';
-  process.env.MOCK_FAULT = input.mockFault ?? 'none';
   await bridge.start(state);
   const bindings = new Map<string, Binding>();
   for (const b of input.bindings) bindings.set(b.alias, b);
@@ -104,7 +114,7 @@ export async function startBridge(
     bindings,
     async stop() {
       await bridge.stop();
-      await db.close();
+      if (db) await db.close();
     },
   };
 }
@@ -167,4 +177,13 @@ export async function waitFor<T>(fn: () => Promise<T | undefined | null>, timeou
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Open a bridge-local state store directly (used to seed crash-window rows). */
+export async function openState(dir: string): Promise<{ state: LocalState; close(): Promise<void> }> {
+  await fs.promises.mkdir(dir, { recursive: true });
+  const db = await openLocalPg(dir);
+  const state = new LocalState(db);
+  await state.init();
+  return { state, close: () => db.close() };
 }

@@ -1,0 +1,27 @@
+[2026-10-09T19:19:48.581Z] relay listening on http://127.0.0.1:12464
+[2026-10-09T19:19:48.638Z] devices: A=dev-jl6q B=dev-vwqy
+[2026-10-09T19:19:53.019Z]   [alpha] info: created thread for alpha: 01a1221b-86f6-70a1-b1c2-977b628cc449
+[2026-10-09T19:19:53.188Z]   [alpha] info: alpha registered as c-rj1j2r
+[2026-10-09T19:19:53.197Z]   [alpha] info: ws connecting ws://127.0.0.1:12464/v1/device?token=***
+[2026-10-09T19:19:53.215Z]   [alpha] info: ws open
+[2026-10-09T19:19:56.009Z]   [beta] info: created thread for beta: 01a1221b-9430-7153-a9c0-a2c6cd9ec661
+[2026-10-09T19:19:56.025Z]   [beta] info: beta registered as c-e4v50r
+[2026-10-09T19:19:56.029Z]   [beta] info: ws connecting ws://127.0.0.1:12464/v1/device?token=***
+[2026-10-09T19:19:56.031Z] bridges started
+[2026-10-09T19:19:56.034Z] convA=c-rj1j2r convB=c-e4v50r
+[2026-10-09T19:19:56.055Z]   [beta] info: ws open
+[2026-10-09T19:19:56.068Z] --- A->B->A: c-rj1j2r -> c-e4v50r
+[2026-10-09T19:19:56.097Z] enqueued r-aff4d0b298d19429
+[2026-10-09T19:20:00.970Z]   [beta] info: completed r-aff4d0b298d19429 turn=01a1221b-9806-7c92-937e-38c8f9a057d8 status=completed
+[2026-10-09T19:20:01.008Z]   [alpha] info: delivered result r-aff4d0b298d19429 into c-rj1j2r turn=01a1221b-aae4-70c2-832a-8bf0963493e4
+FATAL Error: -32603: failed to read thread: thread-store internal error: failed to read session metadata C:\Users\Administrator\.codex\sessions\2026\10\10\rollout-2026-10-10T03-19-51-01a1221b-86f6-70a1-b1c2-977b628cc449.jsonl: rollout at C:\Users\Administrator\.codex\sessions\2026\10\10\rollout-2026-10-10T03-19-51-01a1221b-86f6-70a1-b1c2-977b628cc449.jsonl is empty
+    at CodexClient.onLine (D:\claude\codex-relay\packages\bridge\src\codexClient.ts:89:33)
+    at Interface.<anonymous> (D:\claude\codex-relay\packages\bridge\src\codexClient.ts:50:34)
+    at Interface.emit (node:events:509:20)
+    at [_onLine] [as _onLine] (node:internal/readline/interface:465:12)
+    at [_normalWrite] [as _normalWrite] (node:internal/readline/interface:647:22)
+    at Socket.ondata (node:internal/readline/interface:263:23)
+    at Socket.emit (node:events:509:20)
+    at addChunk (node:internal/streams/readable:568:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:519:3)
+    at Readable.push (node:internal/streams/readable:399:5)

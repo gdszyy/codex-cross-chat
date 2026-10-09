@@ -31,12 +31,15 @@ export async function exportCsv(
     return toCsv(
       [
         'conv_id', 'alias', 'role', 'task', 'task_ref', 'project', 'owner_label', 'tier',
-        'device', 'profile', 'threadId', 'delivery_mode', 'allow_sources', 'roster_status',
-        'registered_via', 'registered_at', 'last_seen_at', 'last_pull_at',
+        'device', 'profile', 'threadId', 'delivery_mode', 'presence_mode', 'allow_sources',
+        'roster_status', 'registered_via', 'registered_at', 'last_seen_at', 'last_pull_at',
       ],
       rows.map((r) => [
         r.conv_id, r.alias, r.role, r.task, r.task_ref, r.project, r.owner_label, r.tier,
-        r.device_id, r.profile, r.thread_id, r.delivery_mode, r.allow_sources.join('|'),
+        r.device_id, r.profile, r.thread_id, r.delivery_mode,
+        // §6.1 polish: make the T1-heartbeat / T2-no-heartbeat distinction explicit.
+        r.tier === 't1_managed' ? 'heartbeat' : 'last_pull_at_no_heartbeat',
+        r.allow_sources.join('|'),
         r.roster_status, r.registered_via, new Date(r.registered_at).toISOString(),
         r.last_seen_at ? new Date(r.last_seen_at).toISOString() : '',
         r.last_pull_at ? new Date(r.last_pull_at).toISOString() : '',

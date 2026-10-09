@@ -1,0 +1,22 @@
+[2026-10-09T19:19:18.753Z] relay listening on http://127.0.0.1:11786
+[2026-10-09T19:19:18.822Z] devices: A=dev-jtfm B=dev-rszi
+[2026-10-09T19:19:20.318Z]   [alpha] info: created thread for alpha: 85d57afb-4a44-4e02-8d2e-e11105062e79
+[2026-10-09T19:19:20.337Z]   [alpha] info: alpha registered as c-me2ji6
+[2026-10-09T19:19:20.343Z]   [alpha] info: ws connecting ws://127.0.0.1:11786/v1/device?token=***
+[2026-10-09T19:19:20.361Z]   [alpha] info: ws open
+[2026-10-09T19:19:21.781Z]   [beta] info: created thread for beta: 3c02b34a-a071-4a82-b9a2-7a116db78981
+[2026-10-09T19:19:21.795Z]   [beta] info: beta registered as c-ake7en
+[2026-10-09T19:19:21.799Z]   [beta] info: ws connecting ws://127.0.0.1:11786/v1/device?token=***
+[2026-10-09T19:19:21.801Z] bridges started
+[2026-10-09T19:19:21.804Z] convA=c-me2ji6 convB=c-ake7en
+[2026-10-09T19:19:21.832Z]   [beta] info: ws open
+[2026-10-09T19:19:21.834Z] --- A->B->A: c-me2ji6 -> c-ake7en
+[2026-10-09T19:19:21.848Z] enqueued r-b155bbc404badb7b
+[2026-10-09T19:19:21.963Z]   [beta] info: completed r-b155bbc404badb7b turn=18cad908-dcf4-4dd4-bce7-ea4dd0cd2255 status=completed
+[2026-10-09T19:19:21.974Z]   [alpha] info: delivered result r-b155bbc404badb7b into c-me2ji6 turn=ed839bc3-0c2d-45b2-844b-67cfc694ecab
+[2026-10-09T19:19:22.138Z] A->B->A OK turn=18cad908-dcf4-4dd4-bce7-ea4dd0cd2255 origin_turns=1
+[2026-10-09T19:19:22.138Z] --- B->A->B: c-ake7en -> c-me2ji6
+[2026-10-09T19:19:22.145Z] enqueued r-11dd7cc5153aac5f
+[2026-10-09T19:19:22.250Z]   [alpha] info: completed r-11dd7cc5153aac5f turn=1b461a16-7cac-493a-85cb-3bf6fd16d1d3 status=completed
+[2026-10-09T19:19:22.257Z]   [beta] info: delivered result r-11dd7cc5153aac5f into c-ake7en turn=75b74c51-1f40-4309-879f-93f7661e9369
+[2026-10-09T19:19:22.414Z] B->A->B OK turn=1b461a16-7cac-493a-85cb-3bf6fd16d1d3 origin_turns=2

@@ -12,6 +12,8 @@ export interface CodexClientOptions {
   args: string[];
   cwd?: string;
   env?: Record<string, string>;
+  /** Run through a shell (needed on Windows for a `.cmd` CLI wrapper). */
+  shell?: boolean;
 }
 
 interface Pending {
@@ -42,6 +44,7 @@ export class CodexClient extends EventEmitter {
       cwd: this.opts.cwd,
       env: { ...process.env, ...(this.opts.env ?? {}) },
       stdio: ['pipe', 'pipe', 'pipe'],
+      shell: this.opts.shell === true,
     }) as ChildProcessWithoutNullStreams;
     const rl = readline.createInterface({ input: this.child.stdout });
     rl.on('line', (line) => this.onLine(line));

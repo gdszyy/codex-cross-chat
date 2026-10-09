@@ -1,0 +1,2 @@
+[relay] database=pglite (embedded pglite)
+[relay] listening on http://127.0.0.1:8799  ws=/v1/device

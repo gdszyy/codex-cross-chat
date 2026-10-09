@@ -16,10 +16,16 @@ export interface RelayClientOptions {
   onLog?: (level: string, message: string) => void;
 }
 
+/** §7.2 exponential reconnect backoff, single interval capped at `maxMs`. */
+export function backoffDelay(attempt: number, maxMs: number, initialMs = 500): number {
+  const raw = initialMs * 2 ** Math.max(0, attempt);
+  return Math.min(raw, maxMs);
+}
+
 export class RelayClient {
   private ws?: WebSocket;
   private cursor = 0;
-  private backoff = 500;
+  private attempt = 0;
   private heartbeat?: NodeJS.Timeout;
   private closed = false;
   private connected = false;
@@ -131,7 +137,7 @@ export class RelayClient {
 
     ws.on('open', () => {
       this.connected = true;
-      this.backoff = 500;
+      this.attempt = 0;
       this.log('info', 'ws open');
       this.send({ type: 'hello' });
       if (this.cursor > 0) this.send({ type: 'resume', cursor: this.cursor });
@@ -165,10 +171,10 @@ export class RelayClient {
     this.connected = false;
     if (this.heartbeat) clearInterval(this.heartbeat);
     if (this.closed) return;
-    const delay = Math.min(this.backoff, this.maxBackoffMs);
+    const delay = backoffDelay(this.attempt, this.maxBackoffMs);
     this.log('warn', `ws closed; reconnect in ${delay}ms`);
     setTimeout(() => this.connect(), delay);
-    this.backoff = Math.min(this.backoff * 2, this.maxBackoffMs);
+    this.attempt++;
   }
 
   private startHeartbeat() {

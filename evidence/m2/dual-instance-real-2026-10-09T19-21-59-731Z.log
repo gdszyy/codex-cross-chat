@@ -1,0 +1,20 @@
+[2026-10-09T19:22:02.619Z] relay listening on http://127.0.0.1:14896
+[2026-10-09T19:22:05.651Z] devices: A=dev-az6k B=dev-87gj
+[2026-10-09T19:22:15.475Z]   [alpha] info: created thread for alpha: 01a1221d-a9a0-7192-b92c-7e50c707aa4c
+[2026-10-09T19:22:15.494Z]   [alpha] info: alpha registered as c-4r22ek
+[2026-10-09T19:22:15.498Z]   [alpha] info: ws connecting ws://127.0.0.1:14896/v1/device?token=***
+[2026-10-09T19:22:15.511Z]   [alpha] info: ws open
+[2026-10-09T19:22:35.589Z]   [beta] info: created thread for beta: 01a1221d-c2b3-7ff2-a87c-d76ca0b855bd
+[2026-10-09T19:22:35.605Z]   [beta] info: beta registered as c-m8nqmt
+[2026-10-09T19:22:35.609Z]   [beta] info: ws connecting ws://127.0.0.1:14896/v1/device?token=***
+[2026-10-09T19:22:35.610Z] bridges started
+[2026-10-09T19:22:35.613Z] convA=c-4r22ek convB=c-m8nqmt
+[2026-10-09T19:22:35.631Z]   [beta] info: ws open
+[2026-10-09T19:22:35.644Z] --- A->B->A: c-4r22ek -> c-m8nqmt
+[2026-10-09T19:22:35.661Z] enqueued r-07d6252c588cfe16
+[2026-10-09T19:22:40.000Z]   [beta] info: completed r-07d6252c588cfe16 turn=01a1221e-073b-7463-bb16-c58930f1eeb9 status=completed
+[2026-10-09T19:22:40.191Z]   [alpha] info: delivered result r-07d6252c588cfe16 into c-4r22ek turn=01a1221e-1807-7972-972b-78ea24ea629f
+FATAL Error: timeout waiting for A->B->A result pushed to origin
+    at waitFor (D:\claude\codex-relay\scripts\dual-instance.ts:62:9)
+    at async roundTrip (D:\claude\codex-relay\scripts\dual-instance.ts:150:23)
+    at async main (D:\claude\codex-relay\scripts\dual-instance.ts:172:3)

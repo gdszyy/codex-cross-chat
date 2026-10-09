@@ -112,6 +112,30 @@ describe('roster & discovery', () => {
     const list = await api(t.baseUrl, 'GET', '/v1/roster', { token: dev.device_token });
     expect(JSON.stringify(list.body)).not.toContain('SECRET-BODY-TEXT');
   });
+
+  it('marks a T2 desktop conversation as pull-only with no heartbeat (§6.1)', async () => {
+    const t = await setup();
+    const dev = await registerDevice(t);
+    const r = await api(t.baseUrl, 'POST', '/v1/roster/register', {
+      token: dev.device_token,
+      body: {
+        profile: 'default',
+        thread_id: 'th-desktop',
+        alias: 'desktop',
+        role: 'worker',
+        task: 'x',
+        project: 'codex-relay',
+        tier: 't2_desktop',
+      },
+    });
+    expect(r.body.data.tier).toBe('t2_desktop');
+    expect(r.body.data.delivery_mode).toBe('manual_pull');
+    const list = await api(t.baseUrl, 'GET', '/v1/roster', { token: dev.device_token });
+    const row = list.body.data.find((x: any) => x.conv_id === r.body.data.conv_id);
+    expect(row.presence.mode).toBe('last_pull_at');
+    expect(row.presence.heartbeat).toBe(false);
+    expect(row.presence.stale).toBe(true);
+  });
 });
 
 describe('permissions (§6)', () => {

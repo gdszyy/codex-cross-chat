@@ -9,6 +9,13 @@
  *  - Results that cannot be sent (relay down) go to a local outbox and replay.
  *  - On result.available for a conversation this bridge owns, it *pushes* the
  *    result into that conversation as a new turn (T1 delivery).
+ *
+ * Scope note (mechanism-design §0.5 / §11 T1-only + §6.1 T2-no-heartbeat):
+ * this bridge only ever creates and reads **T1 managed** threads. `thread/read`
+ * / `thread/resume` / `turn/start` on paginated T2 desktop threads fail closed
+ * upstream, so the bridge never touches them; T2 conversations, if any, are
+ * represented on the relay side with `delivery_mode=manual_pull` and carry no
+ * heartbeat (presence is `last_pull_at` only).
  */
 import { CodexClient, lastAgentMessage, type TurnTerminal } from './codexClient.js';
 import { LocalState, type DispatchRecord } from './state.js';
@@ -31,6 +38,8 @@ export interface BridgeOptions {
   profile: string;
   codexCommand: string;
   codexArgs: string[];
+  codexEnv?: Record<string, string>;
+  codexShell?: boolean;
   model: string;
   cwd: string;
   bindings: Binding[];
@@ -72,6 +81,8 @@ export class Bridge {
       command: this.opts.codexCommand,
       args: this.opts.codexArgs,
       cwd: this.opts.cwd,
+      env: this.opts.codexEnv,
+      shell: this.opts.codexShell,
     });
     this.codex.on('notification', (n: any) => this.onNotification(n));
     this.codex.on('exit', (code: number) => this.log('warn', `codex exited (${code})`));
@@ -138,15 +149,27 @@ export class Bridge {
   private async onEvent(e: WsEvent): Promise<void> {
     if (e.event === 'request.available') {
       const requestId = String(e.payload.request_id);
-      if (e.payload.control === 'cancel') return void this.onCancel(requestId);
-      return void this.processRequest(requestId);
+      if (e.payload.control === 'cancel') return this.safe(() => this.onCancel(requestId), 'cancel');
+      return this.safe(() => this.processRequest(requestId), 'processRequest');
     }
     if (e.event === 'result.available') {
       const requestId = String(e.payload.request_id);
-      return void this.deliverResultToConversation(requestId);
+      return this.safe(() => this.deliverResultToConversation(requestId), 'deliverResult');
     }
     if (e.event === 'revoked') {
       this.log('warn', 'device revoked by relay');
+    }
+  }
+
+  /**
+   * Run background work without leaking an unhandled rejection when the bridge
+   * is stopping mid-flight (the local store may already be closed by then).
+   */
+  private async safe(fn: () => Promise<void>, label: string): Promise<void> {
+    try {
+      await fn();
+    } catch (e) {
+      if (!this.stopping) this.log('warn', `${label} failed: ${(e as Error).message}`);
     }
   }
 
@@ -169,29 +192,27 @@ export class Bridge {
 
   /** §5.3 dedupe + drive one request to a reported terminal state. */
   async processRequest(requestId: string): Promise<void> {
+    if (this.stopping) return;
     const rec = await this.state.get(requestId);
     if (rec && ['running', 'completed', 'interrupted', 'result_pending_verify'].includes(rec.status)) {
       this.log('info', `dedupe: ${requestId} already ${rec.status}`);
       return;
     }
 
+    // The claim step is the executor's delivery point (§4 step 3): it returns
+    // the full request row *including* the body. The status endpoint (§9 #11)
+    // deliberately returns no payload, so the payload must come from here.
     let request: any;
     try {
-      request = await this.relay.getRequest(requestId);
+      request = await this.relay.claim(requestId);
     } catch (e) {
-      this.log('warn', `cannot fetch ${requestId}: ${(e as Error).message}`);
+      this.log('warn', `cannot claim ${requestId}: ${(e as Error).message}`);
       return;
     }
     const binding = this.byConv.get(request.to_conv);
     if (!binding || !binding.threadId) {
       this.log('warn', `no local thread for ${request.to_conv}; ignoring ${requestId}`);
       return;
-    }
-
-    try {
-      await this.relay.claim(requestId);
-    } catch (e) {
-      this.log('warn', `claim failed for ${requestId}: ${(e as Error).message}`);
     }
 
     const marker = `relay:${requestId}`;
@@ -268,6 +289,9 @@ export class Bridge {
   }
 
   private waitForTurn(turnId: string, threadId: string): Promise<TurnTerminal> {
+    // T1-only: this thread was created by this bridge and is `historyMode:
+    // legacy`, which is the only class where thread/read returns turns
+    // (mechanism-design §0.5 wall). T2 paginated threads are never read.
     const timeoutMs = this.opts.turnTimeoutMs ?? 120_000;
     return new Promise((resolve) => {
       let done = false;

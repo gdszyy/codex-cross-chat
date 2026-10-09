@@ -254,10 +254,13 @@ export async function handleHttp(
           r.tier === 't1_managed'
             ? {
                 mode: 'heartbeat',
+                heartbeat: true,
                 online: r.last_seen_at !== null && now - r.last_seen_at <= store.cfg.offline_after_s * 1000,
                 last_seen_at: r.last_seen_at,
               }
-            : { mode: 'last_pull_at', last_pull_at: r.last_pull_at, stale: true },
+            : // §2.2 / §6.1: T2 desktop conversations have NO heartbeat — presence
+              // is only the last time a human opened the conversation and pulled.
+              { mode: 'last_pull_at', heartbeat: false, last_pull_at: r.last_pull_at, stale: true },
         roster_status: r.roster_status,
         accepts_from: r.allow_sources,
       })),

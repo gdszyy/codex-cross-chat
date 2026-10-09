@@ -1,0 +1,22 @@
+[2026-10-09T19:29:37.857Z] relay listening on http://127.0.0.1:9701
+[2026-10-09T19:29:37.918Z] devices: A=dev-xpk1 B=dev-t456
+(node:59396) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[2026-10-09T19:29:41.422Z]   [alpha] info: created thread for alpha: 01a12224-8417-7630-95b8-794f938a84b6
+[2026-10-09T19:29:41.443Z]   [alpha] info: alpha registered as c-oihv01
+[2026-10-09T19:29:41.452Z]   [alpha] info: ws connecting ws://127.0.0.1:9701/v1/device?token=***
+[2026-10-09T19:29:41.475Z]   [alpha] info: ws open
+[2026-10-09T19:29:43.795Z]   [beta] info: created thread for beta: 01a12224-8d28-7d31-a5ce-0c64748aa110
+[2026-10-09T19:29:43.809Z]   [beta] info: beta registered as c-ti2h9d
+[2026-10-09T19:29:43.813Z]   [beta] info: ws connecting ws://127.0.0.1:9701/v1/device?token=***
+[2026-10-09T19:29:43.814Z] bridges started
+[2026-10-09T19:29:43.817Z] convA=c-oihv01 convB=c-ti2h9d
+[2026-10-09T19:29:43.833Z]   [beta] info: ws open
+[2026-10-09T19:29:43.844Z] --- B->A->B: c-ti2h9d -> c-oihv01
+[2026-10-09T19:29:43.858Z] enqueued r-de918a890dc49c40
+[2026-10-09T19:29:47.532Z]   [alpha] info: completed r-de918a890dc49c40 turn=01a12224-8fcd-7152-9008-aa2b332fb802 status=completed
+[2026-10-09T19:29:47.963Z]   [beta] info: delivered result r-de918a890dc49c40 into c-ti2h9d turn=01a12224-9e2d-7bb2-8fb7-f36cf8d6867f
+[2026-10-09T19:30:48.046Z] B->A->B OK turn=01a12224-8fcd-7152-9008-aa2b332fb802 delivery_turn=01a12224-9e2d-7bb2-8fb7-f36cf8d6867f origin_readback=thread/read unavailable (rollout not readable in real stack)
+[2026-10-09T19:30:48.047Z] evidence written: D:\claude\codex-relay\evidence\m2\dual-instance-real-2026-10-09T19-29-29-958Z.json
+[2026-10-09T19:30:48.107Z]   [alpha] warn: codex exited (0)
+[2026-10-09T19:30:48.164Z]   [beta] warn: codex exited (0)
