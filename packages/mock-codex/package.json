@@ -1,0 +1,10 @@
+{
+  "name": "@relay/mock-codex",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fake Codex App Server (stdio JSON-RPC) used as the bridge/relay test bed.",
+  "bin": {
+    "mock-app-server": "./mock-app-server.mjs"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.tmp/
+run/
+*.log
+!evidence/**/*.log
+.pgdata/
+*.db
+*.sqlite
+coverage/
+.DS_Store

@@ -1,0 +1,20 @@
+{
+  "relay_url": "http://127.0.0.1:8788",
+  "device_token": "REPLACE_WITH_DEVICE_TOKEN_FROM_POST_/v1/devices/register",
+  "profile": "default",
+  "codex_command": "codex",
+  "codex_args": ["app-server", "--stdio"],
+  "model": "gpt-5.6-luna",
+  "cwd": "D:\\claude\\codex-relay\\evidence\\m2\\workspace",
+  "allow_sources": ["owner"],
+  "state_dir": null,
+  "turn_timeout_ms": 120000,
+  "bindings": [
+    {
+      "alias": "device-a-worker",
+      "role": "worker",
+      "task": "run verification tasks",
+      "project": "codex-relay"
+    }
+  ]
+}
