@@ -97,7 +97,7 @@ async function setup() {
       project: 'codex-relay',
     }),
   });
-  const row: any = (await reg.json()).data;
+  const row: any = ((await reg.json()) as any).data;
   return { env, dev, convId: row.conv_id as string };
 }
 
@@ -166,7 +166,7 @@ describe('relay MCP tool server', () => {
       headers: { authorization: `Bearer ${dev.device_token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ profile: 'default', thread_id: 'th-other', alias: 'other', role: 'worker', task: 'x', project: 'codex-relay' }),
     });
-    const other: any = (await reg2.json()).data;
+    const other: any = ((await reg2.json()) as any).data;
 
     const client = await connectMcp(env, dev.device_token, convId, 'th-mcp');
 

@@ -1,0 +1,89 @@
+{
+  "started_at": "2026-10-09T20:45:44.615Z",
+  "mode": "mock",
+  "model": "gpt-5.6-luna",
+  "steps": [
+    {
+      "label": "A->B->A",
+      "request_id": "r-0a617e768dc993f7",
+      "exec_terminal": {
+        "exec_status": "completed",
+        "delivery_status": "device_received",
+        "return_status": "cloud_saved",
+        "turn_id": "f38f6f62-ee34-4e49-9dca-5e03ddcbb21d"
+      },
+      "status": {
+        "request_id": "r-0a617e768dc993f7",
+        "root_request_id": "r-0a617e768dc993f7",
+        "chain_depth": 0,
+        "from_conv": "c-u1d7me",
+        "to_conv": "c-7pes7g",
+        "type": "TASK",
+        "delivery_status": "device_received",
+        "exec_status": "completed",
+        "return_status": "cloud_saved",
+        "result_missing": false,
+        "turn_id": "f38f6f62-ee34-4e49-9dca-5e03ddcbb21d",
+        "created_at": 1791578749138,
+        "completed_at": 1791578749250,
+        "expires_at": 1791665149138
+      },
+      "results": [
+        {
+          "kind": "RESULT",
+          "is_first": true,
+          "body": "MOCK-REPLY [[relay:r-0a617e768dc993f7]]\nTASK from c-u1d7me\n\nReply with exactly: RELAY-A2B-OK"
+        }
+      ],
+      "delivery_turn_id": "2931d825-040f-49e9-8dd7-1534f3beeee4",
+      "origin_readback": "thread/read confirmed",
+      "origin_readback_note": "primary evidence of \"result pushed into the origin conversation\" is delivery_turn_id (a new turn started in the origin thread); thread/read read-back of that turn can report an unflushed rollout on the real stack and is tolerated.",
+      "origin_turns": 1
+    },
+    {
+      "label": "B->A->B",
+      "request_id": "r-8d95b10a8a6c4e4f",
+      "exec_terminal": {
+        "exec_status": "completed",
+        "delivery_status": "device_received",
+        "return_status": "cloud_saved",
+        "turn_id": "9b3df441-139b-42ea-9115-ebfd2adb4708"
+      },
+      "status": {
+        "request_id": "r-8d95b10a8a6c4e4f",
+        "root_request_id": "r-8d95b10a8a6c4e4f",
+        "chain_depth": 0,
+        "from_conv": "c-7pes7g",
+        "to_conv": "c-u1d7me",
+        "type": "TASK",
+        "delivery_status": "device_received",
+        "exec_status": "completed",
+        "return_status": "cloud_saved",
+        "result_missing": false,
+        "turn_id": "9b3df441-139b-42ea-9115-ebfd2adb4708",
+        "created_at": 1791578749443,
+        "completed_at": 1791578749544,
+        "expires_at": 1791665149443
+      },
+      "results": [
+        {
+          "kind": "RESULT",
+          "is_first": true,
+          "body": "MOCK-REPLY [[relay:r-8d95b10a8a6c4e4f]]\nTASK from c-7pes7g\n\nReply with exactly: RELAY-B2A-OK"
+        }
+      ],
+      "delivery_turn_id": "40f70281-b47e-422c-bc14-811a0b402286",
+      "origin_readback": "thread/read confirmed",
+      "origin_readback_note": "primary evidence of \"result pushed into the origin conversation\" is delivery_turn_id (a new turn started in the origin thread); thread/read read-back of that turn can report an unflushed rollout on the real stack and is tolerated.",
+      "origin_turns": 2
+    }
+  ],
+  "threads": {
+    "threadA": "4eb14cb8-3e80-4927-8a87-87ddc5fd5c45",
+    "threadB": "d41d2b4c-bb26-48f2-bde9-2ee18f03eec0",
+    "convA": "c-u1d7me",
+    "convB": "c-7pes7g"
+  },
+  "finished_at": "2026-10-09T20:45:49.718Z",
+  "ok": true
+}

@@ -153,7 +153,7 @@ export async function send(env: TestEnv, token: string, body: any) {
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  return { status: res.status, body: await res.json() };
+  return { status: res.status, body: (await res.json()) as any };
 }
 
 export async function getRequest(env: TestEnv, token: string, id: string) {
@@ -162,6 +162,15 @@ export async function getRequest(env: TestEnv, token: string, id: string) {
   });
   const body: any = await res.json();
   return body.data;
+}
+
+export async function submitResult(env: TestEnv, token: string, id: string, payload: any) {
+  const res = await fetch(env.baseUrl + `/v1/requests/${id}/result`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return { status: res.status, body: (await res.json()) as any };
 }
 
 export async function waitFor<T>(fn: () => Promise<T | undefined | null>, timeoutMs = 15_000, label = 'condition'): Promise<T> {

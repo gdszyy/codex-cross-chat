@@ -471,7 +471,7 @@ export class Store {
     const size = Buffer.byteLength(input.body, 'utf8');
     this.assertCanSend(input.from, toRow, size);
 
-    let root = input.parentRequestId ? null : null;
+    let root: string | null = null;
     let depth = 0;
     if (input.type === 'CANCEL') {
       throw bad('use_cancel_endpoint', 'use POST /v1/requests/{id}/cancel for CANCEL');
@@ -702,9 +702,10 @@ export class Store {
     const request = await this.getRequestOrThrow(requestId);
     const results = await this.listResults(requestId);
     const hasResult = results.some((r) => r.kind === 'RESULT');
-    const missing =
-      request.exec_status === 'completed' && !hasResult && request.result_missing !== false;
-    return { request, results, result_missing: !hasResult && request.exec_status !== 'pending' };
+    // Still in flight ⇒ absence of a result is not yet "missing"; anything
+    // terminal without a RESULT is.
+    const terminal = ['completed', 'failed', 'interrupted'].includes(request.exec_status);
+    return { request, results, result_missing: !hasResult && terminal };
   }
 
   /** §9 #13 + §5.4:未启动可取消；已运行发中断请求. */

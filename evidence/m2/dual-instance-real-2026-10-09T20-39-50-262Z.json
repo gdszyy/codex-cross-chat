@@ -1,0 +1,51 @@
+{
+  "started_at": "2026-10-09T20:39:50.264Z",
+  "mode": "real",
+  "model": "gpt-5.6-luna",
+  "steps": [
+    {
+      "label": "A->B->A",
+      "request_id": "r-882d6ddf703b1751",
+      "exec_terminal": {
+        "exec_status": "completed",
+        "delivery_status": "device_received",
+        "return_status": "cloud_saved",
+        "turn_id": "01a12264-e0b1-7c00-bbc1-8a89d4ed6d54"
+      },
+      "status": {
+        "request_id": "r-882d6ddf703b1751",
+        "root_request_id": "r-882d6ddf703b1751",
+        "chain_depth": 0,
+        "from_conv": "c-5yz0uo",
+        "to_conv": "c-s1yuwk",
+        "type": "TASK",
+        "delivery_status": "device_received",
+        "exec_status": "completed",
+        "return_status": "cloud_saved",
+        "result_missing": false,
+        "turn_id": "01a12264-e0b1-7c00-bbc1-8a89d4ed6d54",
+        "created_at": 1791578398852,
+        "completed_at": 1791578403791,
+        "expires_at": 1791664798852
+      },
+      "results": [
+        {
+          "kind": "RESULT",
+          "is_first": true,
+          "body": "RELAY-A2B-OK"
+        }
+      ],
+      "delivery_turn_id": "01a12264-f3f1-7c60-82ad-1089a6c93160",
+      "origin_readback": "thread/read unavailable (rollout not readable in real stack)",
+      "origin_readback_note": "primary evidence of \"result pushed into the origin conversation\" is delivery_turn_id (a new turn started in the origin thread); thread/read read-back of that turn can report an unflushed rollout on the real stack and is tolerated."
+    }
+  ],
+  "threads": {
+    "threadA": "01a12264-d30a-7ba2-a4a4-ae017093beb3",
+    "threadB": "01a12264-ddda-7ee3-ac4c-299cbc8098d1",
+    "convA": "c-5yz0uo",
+    "convB": "c-s1yuwk"
+  },
+  "finished_at": "2026-10-09T20:41:33.997Z",
+  "ok": true
+}

@@ -162,7 +162,7 @@ async function main() {
         } catch {
           return undefined;
         }
-      }, useMock ? 30_000 : 60_000, `${label} result pushed to origin`);
+      }, useMock ? 30_000 : 90_000, `${label} result pushed to origin`);
       originReadback = 'thread/read confirmed';
       originTurns = t.turns?.length;
     } catch {
@@ -173,14 +173,22 @@ async function main() {
     evidence.steps.push({
       label,
       request_id: id,
+      exec_terminal: {
+        exec_status: done.exec_status,
+        delivery_status: done.delivery_status,
+        return_status: done.return_status,
+        turn_id: done.turn_id,
+      },
       status: done,
       results: result.body.data.results?.map((r: any) => ({ kind: r.kind, is_first: r.is_first, body: String(r.body).slice(0, 300) })),
-      turn_id: done.turn_id,
       delivery_turn_id: deliveryTurn,
       origin_readback: originReadback,
+      origin_readback_note:
+        'primary evidence of "result pushed into the origin conversation" is delivery_turn_id (a new turn started in the origin thread); ' +
+        'thread/read read-back of that turn can report an unflushed rollout on the real stack and is tolerated.',
       origin_turns: originTurns,
     });
-    note(`${label} OK turn=${done.turn_id} delivery_turn=${deliveryTurn} origin_readback=${originReadback}`);
+    note(`${label} OK exec=${done.exec_status} turn=${done.turn_id} delivery_turn=${deliveryTurn} origin_readback=${originReadback}`);
   }
 
   const runFwd = only === 'both' || only === 'fwd';

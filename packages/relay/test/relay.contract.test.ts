@@ -513,6 +513,43 @@ describe('§7.2 unstarted expiry', () => {
   });
 });
 
+describe('§7.2 admin config wiring', () => {
+  it('serves the effective DB config and applies an admin change to real requests', async () => {
+    const t = await setup();
+    const before = await api(t.baseUrl, 'GET', '/v1/admin/config', { rootKey: t.rootKey });
+    expect(before.status).toBe(200);
+    expect(before.body.data.chain_limit).toBe(3);
+
+    expect((await api(t.baseUrl, 'GET', '/v1/admin/config')).status).toBe(401);
+
+    const set = await api(t.baseUrl, 'POST', '/v1/admin/config', {
+      rootKey: t.rootKey,
+      body: { key: 'chain_limit', value: 1 },
+    });
+    expect(set.status).toBe(200);
+    expect(set.body.data.chain_limit).toBe(1);
+
+    // The change is real: it now governs request admission.
+    const { dev, a, b } = await twoConvs(t);
+    const send = (body: any) =>
+      api(t.baseUrl, 'POST', '/v1/requests', { token: dev.device_token, body });
+    const root = await send({ from_conv: a.conv_id, to: b.conv_id, type: 'TASK', body: 'r' });
+    const c1 = await send({
+      from_conv: a.conv_id, to: b.conv_id, type: 'CLARIFY', body: 'c1', parent_request_id: root.body.data.request_id,
+    });
+    expect(c1.status).toBe(201);
+    const c2 = await send({
+      from_conv: a.conv_id, to: b.conv_id, type: 'CLARIFY', body: 'c2', parent_request_id: c1.body.data.request_id,
+    });
+    expect(c2.status).toBe(409);
+
+    // A rejected key/value never silently changes anything.
+    expect(
+      (await api(t.baseUrl, 'POST', '/v1/admin/config', { rootKey: t.rootKey, body: { key: 'nope', value: 2 } })).status,
+    ).toBe(400);
+  });
+});
+
 describe('§9 #3 WebSocket channel', () => {
   it('authenticates, acks heartbeat and pushes a directed event', async () => {
     const t = await setup();

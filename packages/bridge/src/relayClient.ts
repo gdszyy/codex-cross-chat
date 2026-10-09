@@ -14,6 +14,10 @@ export interface RelayClientOptions {
   onEvent?: (e: WsEvent) => void;
   onPresence?: (online: boolean) => void;
   onLog?: (level: string, message: string) => void;
+  /** Called after every (re)connect, once the resume cursor has been replayed. */
+  onConnected?: () => void;
+  /** Durable event cursor (survives restarts). */
+  cursorStore?: { get(): Promise<number>; set(value: number): Promise<void> };
 }
 
 /** §7.2 exponential reconnect backoff, single interval capped at `maxMs`. */
@@ -139,9 +143,21 @@ export class RelayClient {
       this.connected = true;
       this.attempt = 0;
       this.log('info', 'ws open');
-      this.send({ type: 'hello' });
-      if (this.cursor > 0) this.send({ type: 'resume', cursor: this.cursor });
-      this.startHeartbeat();
+      void (async () => {
+        // §7.2/§8.2: resume from the *persisted* cursor so events that arrived
+        // while this bridge was down are replayed, not silently dropped.
+        if (this.opts.cursorStore) {
+          try {
+            this.cursor = Math.max(this.cursor, await this.opts.cursorStore.get());
+          } catch {
+            /* keep in-memory cursor */
+          }
+        }
+        this.send({ type: 'hello' });
+        if (this.cursor > 0) this.send({ type: 'resume', cursor: this.cursor });
+        this.opts.onConnected?.();
+        this.startHeartbeat();
+      })();
     });
 
     ws.on('message', (raw) => {
@@ -153,9 +169,11 @@ export class RelayClient {
       }
       if (msg.type === 'event') {
         this.cursor = Math.max(this.cursor, Number(msg.id ?? 0));
+        void this.opts.cursorStore?.set(this.cursor);
         this.opts.onEvent?.({ event: msg.event, id: msg.id, payload: msg.payload });
       } else if (msg.type === 'resume_done') {
         this.cursor = Math.max(this.cursor, Number(msg.cursor ?? 0));
+        void this.opts.cursorStore?.set(this.cursor);
       } else if (msg.type === 'presence') {
         this.opts.onPresence?.(msg.online === true);
       } else if (msg.type === 'heartbeat_ack') {

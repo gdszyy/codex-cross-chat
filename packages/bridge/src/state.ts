@@ -66,6 +66,10 @@ CREATE TABLE IF NOT EXISTS binding (
   conv_id TEXT,
   updated_at BIGINT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS kv (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;
 
 const num = (v: unknown) => Number(v);
@@ -186,6 +190,38 @@ export class LocalState {
 
   async listBindings() {
     return this.db.query<any>('SELECT * FROM binding ORDER BY alias ASC');
+  }
+
+  // ---- kv (event cursor) --------------------------------------------------
+
+  /**
+   * Persisted WS event cursor. Without this, a bridge restart would forget how
+   * far it had consumed and never replay events it missed while offline (the
+   * "silent lost item" gap).
+   */
+  async getCursor(): Promise<number> {
+    const rows = await this.db.query<any>("SELECT value FROM kv WHERE key='event_cursor'");
+    return rows.length ? Number(rows[0].value) : 0;
+  }
+
+  async setCursor(value: number): Promise<void> {
+    await this.db.query(
+      "INSERT INTO kv(key, value) VALUES('event_cursor', $1) ON CONFLICT(key) DO UPDATE SET value=$1",
+      [String(value)],
+    );
+  }
+
+  /** Idempotency guard for pushing a result/status notification into a conversation. */
+  async getDelivered(requestId: string): Promise<string | null> {
+    const rows = await this.db.query<any>('SELECT value FROM kv WHERE key=$1', [`delivered:${requestId}`]);
+    return rows.length ? rows[0].value : null;
+  }
+
+  async markDelivered(requestId: string, resultId: string): Promise<void> {
+    await this.db.query(
+      'INSERT INTO kv(key, value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2',
+      [`delivered:${requestId}`, resultId],
+    );
   }
 }
 

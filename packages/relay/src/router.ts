@@ -6,6 +6,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Store } from './domain.js';
 import { exportCsv, type ExportLayer } from './csv.js';
+import { setConfigValue } from './db.js';
 import type { RosterRow } from '@relay/protocol';
 import { HttpError, bad, forbidden, unauth } from './util.js';
 
@@ -148,6 +149,24 @@ export async function handleHttp(
   if (method === 'GET' && path === '/v1/admin/overview') {
     requireRoot();
     return ok(res, await store.overview());
+  }
+
+  // admin config (§8/D9: non-secret parameters are DB config items, adjustable
+  // from the admin face). Not one of the 18 conversation-facing endpoints.
+  if (method === 'GET' && path === '/v1/admin/config') {
+    requireRoot();
+    return ok(res, store.cfg);
+  }
+  if (method === 'POST' && path === '/v1/admin/config') {
+    requireRoot();
+    const body = await readBody(req);
+    if (!body.key || body.value === undefined) throw bad('config_key_required', 'key and value required');
+    if (!(body.key in store.cfg)) throw bad('config_unknown_key', `unknown config key: ${body.key}`);
+    const num = Number(body.value);
+    if (!Number.isFinite(num)) throw bad('config_bad_value', 'value must be a finite number');
+    await setConfigValue(store.db, String(body.key), String(num));
+    await store.refreshConfig();
+    return ok(res, store.cfg);
   }
 
   // 15. GET /v1/admin/export

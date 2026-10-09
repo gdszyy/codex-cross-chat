@@ -57,6 +57,7 @@ export class Bridge {
   private byAlias = new Map<string, Binding>();
   private byConv = new Map<string, Binding>();
   private turnWaiters = new Map<string, (t: TurnTerminal) => void>();
+  private inFlight = new Set<string>();
   private stopping = false;
 
   constructor(private opts: BridgeOptions) {}
@@ -88,6 +89,17 @@ export class Bridge {
     this.codex.on('exit', (code: number) => this.log('warn', `codex exited (${code})`));
     await this.codex.start();
 
+    // C5: never hard-code the model — read what this CLI actually offers and
+    // flag a mismatch (thread/start accepts any string, so a wrong model only
+    // surfaces at turn time; see m1-compat-report §3 局限 1).
+    const models = await this.codex.modelList().catch(() => [] as string[]);
+    if (models.length) {
+      this.log('info', `model/list: ${models.join(', ')}`);
+      if (this.opts.model && !models.includes(this.opts.model)) {
+        this.log('warn', `configured model ${this.opts.model} is not in model/list`);
+      }
+    }
+
     this.relay = new RelayClient({
       baseUrl: this.opts.relayUrl,
       deviceToken: this.opts.deviceToken,
@@ -95,6 +107,13 @@ export class Bridge {
       maxBackoffMs: this.opts.maxBackoffMs,
       onLog: (l, m) => this.log(l, m),
       onEvent: (e) => void this.onEvent(e),
+      // B2: durable cursor + a pull on every reconnect so nothing enqueued while
+      // this bridge was down is silently lost.
+      cursorStore: {
+        get: () => this.state.getCursor(),
+        set: (v) => this.state.setCursor(v),
+      },
+      onConnected: () => void this.safe(() => this.pullInbox().then(() => undefined), 'reconnectPull'),
     });
 
     // 1) Ensure a thread per binding and register it with the relay.
@@ -108,8 +127,38 @@ export class Bridge {
     // 3) Flush anything queued while the relay was unreachable.
     await this.flushOutbox();
 
+    // 3b) B2: pull anything that arrived while this bridge was offline —
+    //     a restart must not require a fresh push event to notice back work.
+    const pulled = await this.pullInbox();
+    if (pulled) this.log('info', `startup inbox pull started ${pulled} request(s)`);
+
     // 4) Connect the device channel (push + heartbeat).
     this.relay.connect();
+  }
+
+  /**
+   * Pull pending requests for every conversation this bridge owns.
+   * Used at startup and on every reconnect (a device that was down receives no
+   * events; the inbox is the authoritative back-stop).
+   */
+  async pullInbox(): Promise<number> {
+    let started = 0;
+    for (const b of this.byConv.values()) {
+      if (!b.convId) continue;
+      let inbox: any;
+      try {
+        inbox = await this.relay.inbox(b.convId);
+      } catch (e) {
+        this.log('warn', `inbox pull failed for ${b.convId}: ${(e as Error).message}`);
+        continue;
+      }
+      for (const r of inbox.pending_for_me ?? []) {
+        if (this.stopping) return started;
+        await this.processRequest(r.request_id);
+        started++;
+      }
+    }
+    return started;
   }
 
   private async ensureBinding(b: Binding): Promise<void> {
@@ -166,6 +215,7 @@ export class Bridge {
    * is stopping mid-flight (the local store may already be closed by then).
    */
   private async safe(fn: () => Promise<void>, label: string): Promise<void> {
+    if (this.stopping) return;
     try {
       await fn();
     } catch (e) {
@@ -193,15 +243,47 @@ export class Bridge {
   /** §5.3 dedupe + drive one request to a reported terminal state. */
   async processRequest(requestId: string): Promise<void> {
     if (this.stopping) return;
+    // Guard against concurrent triggers for the same request (a WS event plus a
+    // startup/reconnect inbox pull) starting the same turn twice.
+    if (this.inFlight.has(requestId)) {
+      this.log('info', `dedupe: ${requestId} already in flight`);
+      return;
+    }
+    this.inFlight.add(requestId);
+    try {
+      await this.processRequestInner(requestId);
+    } finally {
+      this.inFlight.delete(requestId);
+    }
+  }
+
+  private async processRequestInner(requestId: string): Promise<void> {
     const rec = await this.state.get(requestId);
     if (rec && ['running', 'completed', 'interrupted', 'result_pending_verify'].includes(rec.status)) {
       this.log('info', `dedupe: ${requestId} already ${rec.status}`);
       return;
     }
 
-    // The claim step is the executor's delivery point (§4 step 3): it returns
-    // the full request row *including* the body. The status endpoint (§9 #11)
-    // deliberately returns no payload, so the payload must come from here.
+    // §4 step 3 order: write the local receipt record FIRST, then claim
+    // ("device received"). The status endpoint (§9 #11) exposes to_conv without
+    // the body, which is exactly what the intent row needs; the body itself only
+    // arrives with the claim, and is deliberately absent from the status read.
+    let meta: any;
+    try {
+      meta = await this.relay.getRequest(requestId);
+    } catch (e) {
+      this.log('warn', `cannot read ${requestId}: ${(e as Error).message}`);
+      return;
+    }
+    const binding = this.byConv.get(meta.to_conv);
+    if (!binding || !binding.threadId) {
+      this.log('warn', `no local thread for ${meta.to_conv}; ignoring ${requestId}`);
+      return;
+    }
+    const marker = `relay:${requestId}`;
+    await this.state.intent(requestId, meta.root_request_id, meta.to_conv, binding.threadId, marker);
+
+    // Now claim (the executor's delivery point) → the full row *including* body.
     let request: any;
     try {
       request = await this.relay.claim(requestId);
@@ -209,14 +291,6 @@ export class Bridge {
       this.log('warn', `cannot claim ${requestId}: ${(e as Error).message}`);
       return;
     }
-    const binding = this.byConv.get(request.to_conv);
-    if (!binding || !binding.threadId) {
-      this.log('warn', `no local thread for ${request.to_conv}; ignoring ${requestId}`);
-      return;
-    }
-
-    const marker = `relay:${requestId}`;
-    await this.state.intent(requestId, request.root_request_id, request.to_conv, binding.threadId, marker);
 
     const text = `[[${marker}]]\n${request.type} from ${request.from_conv}\n\n${request.body}`;
     let turnId: string;
@@ -250,7 +324,7 @@ export class Bridge {
       exec_status: exec,
       turn_id: turnId,
       body: terminal.text || `(no agent message; status=${exec})`,
-      evidence: `mock://threads/${binding.threadId}/turns/${turnId}`,
+      evidence: `codex-thread:${binding.threadId}#turn:${turnId}`,
       result_missing: exec !== 'completed' || !terminal.text,
     });
     this.log('info', `completed ${requestId} turn=${turnId} status=${exec}`);
@@ -271,20 +345,25 @@ export class Bridge {
 
   /** T1 push delivery: a result for a conversation we own becomes a new turn. */
   private async deliverResultToConversation(requestId: string): Promise<void> {
+    if (this.stopping) return;
     const result = await this.relay.readResult(requestId);
-    const conv = result.request?.to_conv ?? result.request?.return_addr;
-    const binding = conv ? this.byConv.get(conv) : undefined;
     const owner = result.request ? this.byConv.get(result.request.return_addr) : undefined;
-    const target = owner ?? binding;
-    if (!target?.threadId) return;
-    const latest = (result.results ?? []).filter((r: any) => r.kind === 'RESULT').pop();
+    if (!owner?.threadId) return;
+    // §5.4: delivery is idempotent per item — a repeated event (or a STATUS that
+    // arrives after a RESULT) must not re-push the same payload. The guard is
+    // persisted so a restart cannot re-push either.
+    const items = (result.results ?? []).filter((r: any) => r.kind === 'RESULT' || r.kind === 'STATUS');
+    const latest = items[items.length - 1];
     if (!latest) return;
-    const text = `[[relay-result:${requestId}]]\nRESULT for ${requestId} (from ${result.request.to_conv})\n\n${latest.body}`;
+    const prev = await this.state.getDelivered(requestId);
+    if (prev === latest.result_id) return;
+    const text = `[[relay-result:${requestId}]]\n${latest.kind} for ${requestId} (from ${result.request.to_conv})\n\n${latest.body}`;
     try {
-      const turnId = await this.codex.turnStart(target.threadId, text, this.opts.model);
-      this.log('info', `delivered result ${requestId} into ${result.request.return_addr} turn=${turnId}`);
+      const turnId = await this.codex.turnStart(owner.threadId, text, this.opts.model);
+      await this.state.markDelivered(requestId, latest.result_id);
+      this.log('info', `delivered ${latest.kind} ${requestId} into ${result.request.return_addr} turn=${turnId}`);
     } catch (e) {
-      this.log('warn', `failed to deliver result ${requestId}: ${(e as Error).message}`);
+      this.log('warn', `failed to deliver ${requestId}: ${(e as Error).message}`);
     }
   }
 
@@ -352,7 +431,7 @@ export class Bridge {
             exec_status: status,
             turn_id: rec.turn_id,
             body: lastAgentMessage(turn) || `(recovered; status=${status})`,
-            evidence: `mock://threads/${binding.threadId}/turns/${rec.turn_id}`,
+            evidence: `codex-thread:${binding.threadId}#turn:${rec.turn_id}`,
             result_missing: status !== 'completed',
           });
           result.adopted++;
@@ -382,7 +461,7 @@ export class Bridge {
           exec_status: status,
           turn_id: turn.id,
           body: lastAgentMessage(turn) || `(adopted; status=${status})`,
-          evidence: `mock://threads/${binding.threadId}/turns/${turn.id}`,
+          evidence: `codex-thread:${binding.threadId}#turn:${turn.id}`,
         });
         result.adopted++;
       } else if (matches.length === 0) {

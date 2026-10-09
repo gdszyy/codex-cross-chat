@@ -2,9 +2,11 @@
  * Bridge <-> mock Codex integration tests.
  *
  * These drive the *real* bridge against a *real* relay (HTTP+WS) and a mock
- * App Server process, covering the M2 recovery matrix from plan §8.2:
- * round trip both directions, duplicate delivery dedupe, duplicate terminal,
- * no terminal (result missing), cancel-while-running, and the §5.3 crash window.
+ * App Server process. Coverage in THIS file: round trip in both directions,
+ * duplicate delivery dedupe, duplicate terminal notification, missing terminal
+ * state, and cancel-while-running. The §5.3 crash window, offline→restart
+ * backlog pickup and the outbox replay live in `recovery.test.ts` (kept in a
+ * separate process so they get a fresh, unloaded runtime).
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import path from 'node:path';
@@ -15,13 +17,12 @@ import {
   sleep,
   startBridge,
   startRelay,
+  submitResult,
   updateAllowSources,
   waitFor,
   type BridgeHandle,
   type TestEnv,
 } from './helpers.js';
-
-const TMP = path.resolve(process.cwd(), '.tmp', 'bridge-tests');
 
 const cleanups: (() => Promise<void>)[] = [];
 const bridges: BridgeHandle[] = [];
@@ -222,6 +223,49 @@ describe('§5.2 missing terminal state', () => {
   });
 });
 
+describe('§5.4 delivery is idempotent per item', () => {
+  it('does not re-push the RESULT when a later STATUS arrives or the event repeats', async () => {
+    const { env, devA, devB, a, bindA, bindB } = await pair();
+    const sent = await send(env, devA.device_token, {
+      from_conv: bindA.convId!,
+      to: bindB.convId!,
+      type: 'TASK',
+      body: 'steady',
+    });
+    const id = sent.body.data.request_id;
+
+    const originThread = async () => await a.bridge.codexClient.threadRead(bindA.threadId!, true);
+    // Count *turns* (a mock turn holds both the user and the agent message, so
+    // counting text items would double-count a single delivery).
+    const turnsWith = async (needle: string) =>
+      (await originThread()).turns.filter((x: any) =>
+        (x.items ?? []).some((i: any) => typeof i.text === 'string' && i.text.includes(needle)),
+      ).length;
+
+    // The worker's RESULT is pushed into the origin conversation exactly once.
+    await waitFor(async () => ((await turnsWith('RESULT for ' + id)) >= 1 ? true : undefined), 20_000, 'RESULT delivered');
+    expect(await turnsWith('RESULT for ' + id)).toBe(1);
+    expect(await turnsWith('relay-result:' + id)).toBe(1);
+
+    // A later STATUS becomes a *new* notification, not a re-push of the RESULT.
+    await submitResult(env, devB.device_token, id, {
+      conv_id: bindB.convId,
+      kind: 'STATUS',
+      exec_status: 'running',
+      body: 'still working',
+    });
+    await waitFor(async () => ((await turnsWith('STATUS for ' + id)) >= 1 ? true : undefined), 20_000, 'STATUS delivered');
+    expect(await turnsWith('STATUS for ' + id)).toBe(1);
+    expect(await turnsWith('RESULT for ' + id)).toBe(1); // unchanged: no RESULT re-push
+    expect(await turnsWith('relay-result:' + id)).toBe(2); // RESULT + STATUS
+
+    // Re-running delivery for the same item must not push again.
+    await (a.bridge as any).deliverResultToConversation(id);
+    await sleep(400);
+    expect(await turnsWith('relay-result:' + id)).toBe(2);
+  });
+});
+
 describe('§5.4 cancel while running', () => {
   it('interrupts the turn and records the real terminal state', async () => {
     const { env, devA, b, bindA, bindB } = await pair({ fault: 'delay', delayMs: 60_000 });
@@ -250,8 +294,4 @@ describe('§5.4 cancel while running', () => {
     }, 20_000, 'interrupted');
     expect(st.turn_id).toBeTruthy();
   });
-});
-
-describe('placeholder', () => {
-  it.skip('moved to recovery.test.ts', () => {});
 });

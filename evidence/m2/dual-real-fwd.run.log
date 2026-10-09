@@ -1,0 +1,24 @@
+[2026-10-09T20:39:52.717Z] relay listening on http://127.0.0.1:5272
+[2026-10-09T20:39:52.773Z] devices: A=dev-b0mf B=dev-9d2t
+(node:26928) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[2026-10-09T20:39:55.309Z]   [alpha] info: model/list: gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna
+[2026-10-09T20:39:56.620Z]   [alpha] info: created thread for alpha: 01a12264-d30a-7ba2-a4a4-ae017093beb3
+[2026-10-09T20:39:56.639Z]   [alpha] info: alpha registered as c-5yz0uo
+[2026-10-09T20:39:56.665Z]   [alpha] info: ws connecting ws://127.0.0.1:5272/v1/device?token=***
+[2026-10-09T20:39:56.681Z]   [alpha] info: ws open
+[2026-10-09T20:39:58.103Z]   [beta] info: model/list: gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna
+[2026-10-09T20:39:58.766Z]   [beta] info: created thread for beta: 01a12264-ddda-7ee3-ac4c-299cbc8098d1
+[2026-10-09T20:39:58.780Z]   [beta] info: beta registered as c-s1yuwk
+[2026-10-09T20:39:58.796Z]   [beta] info: ws connecting ws://127.0.0.1:5272/v1/device?token=***
+[2026-10-09T20:39:58.797Z] bridges started
+[2026-10-09T20:39:58.802Z] convA=c-5yz0uo convB=c-s1yuwk
+[2026-10-09T20:39:58.824Z]   [beta] info: ws open
+[2026-10-09T20:39:58.828Z] --- A->B->A: c-5yz0uo -> c-s1yuwk
+[2026-10-09T20:39:58.860Z] enqueued r-882d6ddf703b1751
+[2026-10-09T20:40:03.796Z]   [beta] info: completed r-882d6ddf703b1751 turn=01a12264-e0b1-7c00-bbc1-8a89d4ed6d54 status=completed
+[2026-10-09T20:40:03.842Z]   [alpha] info: delivered result r-882d6ddf703b1751 into c-5yz0uo turn=01a12264-f3f1-7c60-82ad-1089a6c93160
+[2026-10-09T20:41:33.997Z] A->B->A OK exec=completed turn=01a12264-e0b1-7c00-bbc1-8a89d4ed6d54 delivery_turn=01a12264-f3f1-7c60-82ad-1089a6c93160 origin_readback=thread/read unavailable (rollout not readable in real stack)
+[2026-10-09T20:41:33.999Z] evidence written: D:\claude\codex-relay\evidence\m2\dual-instance-real-2026-10-09T20-39-50-262Z.json
+[2026-10-09T20:41:34.121Z]   [alpha] warn: codex exited (0)
+[2026-10-09T20:41:34.178Z]   [beta] warn: codex exited (0)

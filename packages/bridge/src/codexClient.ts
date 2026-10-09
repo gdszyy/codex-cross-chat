@@ -49,6 +49,9 @@ export class CodexClient extends EventEmitter {
     const rl = readline.createInterface({ input: this.child.stdout });
     rl.on('line', (line) => this.onLine(line));
     this.child.stderr.on('data', (d) => this.emit('stderr', d.toString()));
+    // Never let a stdin write error (e.g. after the child exits) crash the
+    // process as an unhandled stream error.
+    this.child.stdin.on('error', (e: Error) => this.emit('stdinError', e.message));
     this.child.on('exit', (code) => {
       this.emit('exit', code);
       for (const p of this.pending.values()) {
@@ -71,7 +74,14 @@ export class CodexClient extends EventEmitter {
   }
 
   private send(obj: any): void {
-    this.child!.stdin.write(JSON.stringify(obj) + '\n');
+    const child = this.child;
+    if (!child || child.exitCode !== null || !child.stdin.writable) {
+      // Called after the process ended (e.g. a late event during shutdown).
+      // Reject through the pending-promise path instead of emitting an
+      // unhandled ERR_STREAM_WRITE_AFTER_END on the socket.
+      throw new Error('codex process is not running');
+    }
+    child.stdin.write(JSON.stringify(obj) + '\n');
   }
 
   private onLine(line: string): void {

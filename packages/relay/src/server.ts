@@ -3,11 +3,11 @@
  */
 import { createServer as createHttpServer, type Server } from 'node:http';
 import { Store } from './domain.js';
-import { bootstrapDb, type Db } from './db.js';
+import { bootstrapDb, loadConfig, type Db } from './db.js';
 import { handleHttp } from './router.js';
 import { WsHub } from './ws.js';
 import { HttpError } from './util.js';
-import type { RuntimeConfig } from '@relay/protocol';
+import { DEFAULT_CONFIG, type RuntimeConfig } from '@relay/protocol';
 
 export interface RelayOptions {
   db: Db;
@@ -26,11 +26,12 @@ export interface Relay {
 }
 
 export async function createRelay(opts: RelayOptions): Promise<Relay> {
-  await bootstrapDb(opts.db);
-  const store = new Store(opts.db, {
-    ...(await import('@relay/protocol')).DEFAULT_CONFIG,
-    ...(opts.config ?? {}),
-  });
+  // §8/D9: every non-secret parameter is a *database* config item with a
+  // default. Seed the merged defaults, then read the effective config back out
+  // of the database — the config table is the real source at runtime, not a
+  // hard-coded object.
+  await bootstrapDb(opts.db, { ...DEFAULT_CONFIG, ...(opts.config ?? {}) });
+  const store = new Store(opts.db, await loadConfig(opts.db));
   const hub = new WsHub(store, () => {});
   const server = createHttpServer((req, res) => {
     handleHttp({ store, rootKey: opts.rootKey }, req, res).catch((err) => {

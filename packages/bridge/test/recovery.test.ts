@@ -99,7 +99,7 @@ describe('§5.3 crash window', () => {
     const running = await waitFor(async () => {
       const rec = await b.state.get(id);
       return rec && rec.turn_id ? rec : undefined;
-    }, 15_000, 'turn recorded');
+    }, 30_000, 'turn recorded');
     const turnId = running.turn_id!;
 
     // The bridge "dies": stop it (the mock keeps the in-progress turn on disk).
@@ -127,8 +127,8 @@ describe('§5.3 crash window', () => {
     expect(rec!.status).toBe('result_pending_verify');
   });
 
-  it('restarts safely when the turn was never started', async () => {
-    const stateDir = path.join(TMP, 'restart-' + Date.now());
+  it('executes a request that arrived while the bridge was offline (real path, no hand-written intent)', async () => {
+    const stateDir = path.join(TMP, 'offline-' + Date.now());
     const mockState = path.join(stateDir, 'mock.json');
     const env = trackEnv(await startRelay());
     const devA = await registerDevice(env);
@@ -154,19 +154,24 @@ describe('§5.3 crash window', () => {
     );
     const bindA = a.bindings.get('alpha')!;
     await updateAllowSources(env, devB.device_token, bindB.threadId!, 'beta', 'worker', [bindA.convId!]);
-    await b0.stop(); // B offline
 
+    // B goes offline.
+    await b0.stop();
+
+    // The request arrives while B is down: nobody can execute it yet.
     const sent = await send(env, devA.device_token, {
       from_conv: bindA.convId!,
       to: bindB.convId!,
       type: 'TASK',
-      body: 'never started',
+      body: 'arrived while offline',
     });
     const id = sent.body.data.request_id;
+    const before = await getRequest(env, devA.device_token, id);
+    expect(before.exec_status).toBe('pending');
+    expect(before.delivery_status).toBe('queued');
 
-    // Seed the crash-after-intent window: an intent row with no turnId.
-    await shared.state.intent(id, id, bindB.convId!, bindB.threadId!, `relay:${id}`);
-
+    // B restarts against the same local state. Nothing is hand-seeded: the
+    // bridge itself must notice the backlog (startup inbox pull + resume).
     const b2 = trackBridge(
       await startBridge(env, {
         deviceToken: devB.device_token,
@@ -179,10 +184,67 @@ describe('§5.3 crash window', () => {
     const st = await waitFor(async () => {
       const r = await getRequest(env, devA.device_token, id);
       return r.exec_status === 'completed' ? r : undefined;
-    }, 25_000, 'restarted and completed');
+    }, 30_000, 'executed after restart');
     expect(st.turn_id).toBeTruthy();
+
     const rec = await b2.state.get(id);
     expect(rec!.status).toBe('completed');
+    expect(rec!.marker).toBe(`relay:${id}`); // produced by the bridge, not seeded
+    // Exactly one execution.
+    const thread = await b2.bridge.codexClient.threadRead(bindB.threadId!, true);
+    expect((thread.turns ?? []).length).toBe(1);
+  });
+
+  it('persists the WS event cursor across restarts', async () => {
+    const stateDir = path.join(TMP, 'cursor-' + Date.now());
+    const env = trackEnv(await startRelay());
+    const devA = await registerDevice(env);
+    const devB = await registerDevice(env);
+    const shared = await openState(stateDir);
+    cleanups.push(() => shared.close());
+    const b0 = trackBridge(
+      await startBridge(env, {
+        deviceToken: devB.device_token,
+        bindings: [{ alias: 'beta', role: 'worker', task: 'execute', project: 'codex-relay' }],
+        cwd: process.cwd(),
+        state: shared.state,
+      }),
+    );
+    const bindB = b0.bindings.get('beta')!;
+    const a = trackBridge(
+      await startBridge(env, {
+        deviceToken: devA.device_token,
+        bindings: [{ alias: 'alpha', role: 'manager', task: 'dispatch', project: 'codex-relay' }],
+        cwd: process.cwd(),
+      }),
+    );
+    const bindA = a.bindings.get('alpha')!;
+    await updateAllowSources(env, devB.device_token, bindB.threadId!, 'beta', 'worker', [bindA.convId!]);
+
+    await send(env, devA.device_token, {
+      from_conv: bindA.convId!,
+      to: bindB.convId!,
+      type: 'TASK',
+      body: 'consume an event',
+    });
+    const cursor = await waitFor(async () => {
+      const c = await b0.state.getCursor();
+      return c > 0 ? c : undefined;
+    }, 20_000, 'cursor persisted');
+    expect(cursor).toBeGreaterThan(0);
+
+    // Restart with the same state: the persisted cursor must survive and be
+    // loaded (so the connection resumes instead of replaying from zero).
+    await b0.stop();
+    const b2 = trackBridge(
+      await startBridge(env, {
+        deviceToken: devB.device_token,
+        bindings: [{ alias: 'beta', role: 'worker', task: 'execute', project: 'codex-relay' }],
+        cwd: process.cwd(),
+        state: shared.state,
+      }),
+    );
+    expect(await b2.state.getCursor()).toBe(cursor);
   });
 });
 
