@@ -1,0 +1,9 @@
+{"ts":"2026-10-10T05:27:05.264Z","event":"spawn","cmd":"npx tsx \"D:/claude/codex-relay/packages/bridge/src/mcp/server.ts\" --conv-id c-rmdgis --profile default --thread-id rehearsal-m25-a","pid":76052}
+{"ts":"2026-10-10T05:27:05.265Z","event":"send","msg":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"m2-5-rehearsal-driver","version":"0.0.1"}}}}
+{"ts":"2026-10-10T05:27:05.906Z","event":"recv","msg":{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"codex-relay","version":"0.1.0"}}}}
+{"ts":"2026-10-10T05:27:05.906Z","event":"initialized","serverInfo":{"name":"codex-relay","version":"0.1.0"},"protocolVersion":"2024-11-05"}
+{"ts":"2026-10-10T05:27:05.963Z","event":"send","msg":{"jsonrpc":"2.0","method":"notifications/initialized"}}
+{"ts":"2026-10-10T05:27:06.275Z","event":"send","msg":{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"relay_send","arguments":{"parent_request_id":"r-667ff1604f3a344a","to":"c-k25x7p","body":"Chain-limit rehearsal (d4) continuation","type":"CLARIFY"}}}}
+{"ts":"2026-10-10T05:27:06.377Z","event":"recv","msg":{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"tool error: relay POST /v1/requests -> 409 chain_limit_reached chain depth limit reached"}],"isError":true}}}
+{"ts":"2026-10-10T05:27:06.377Z","event":"call-ok","tool":"relay_send","result":{"content":[{"type":"text","text":"tool error: relay POST /v1/requests -> 409 chain_limit_reached chain depth limit reached"}],"isError":true}}
+{"ts":"2026-10-10T05:27:07.392Z","event":"exit","child":{"killed":true,"exitCode":"forced"}}

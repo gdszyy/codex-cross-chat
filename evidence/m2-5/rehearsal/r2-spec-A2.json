@@ -1,0 +1,13 @@
+{
+  "tag": "r2-A-send-first-try",
+  "args": ["--conv-id", "c-6rorfd", "--profile", "default", "--thread-id", "r2-rehearsal-a"],
+  "calls": [
+    { "name": "relay_send", "arguments": {
+      "to": "c-27j9ln",
+      "type": "TASK",
+      "body": "【m2-5 二轮盲演】任务 1：请回复一行确认文本「R2-REHEARSAL-OK」并附证据引用。",
+      "result_requirement": "一行确认文本 + 证据引用",
+      "ttl_s": 3600
+    } }
+  ]
+}

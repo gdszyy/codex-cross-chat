@@ -1,0 +1,8 @@
+{
+  "tag": "B-register",
+  "args": ["--profile", "default", "--thread-id", "rehearsal-m25-b"],
+  "calls": [
+    { "name": "relay_register", "arguments": { "alias": "rehearsal-beta", "role": "worker", "task": "m2-5 接入演练：执行方", "project": "codex-relay" } },
+    { "name": "relay_whoami", "arguments": {} }
+  ]
+}

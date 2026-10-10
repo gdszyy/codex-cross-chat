@@ -1,0 +1,13 @@
+{
+  "tag": "A-reopen-sources",
+  "args": ["--conv-id", "c-rmdgis", "--profile", "default", "--thread-id", "rehearsal-m25-a"],
+  "calls": [
+    { "name": "relay_register", "arguments": {
+      "alias": "rehearsal-alpha",
+      "role": "manager",
+      "task": "m2-5 接入演练：发起方",
+      "project": "codex-relay",
+      "allow_sources": ["owner", "c-k25x7p", "device:dev-psf8"]
+    } }
+  ]
+}

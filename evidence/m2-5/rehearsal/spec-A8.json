@@ -1,0 +1,9 @@
+{
+  "tag": "A-cancel-2",
+  "args": ["--conv-id", "c-rmdgis", "--profile", "default", "--thread-id", "rehearsal-m25-a"],
+  "calls": [
+    { "name": "relay_cancel", "arguments": { "request_id": "r-bf27c0eee86547b5" } },
+    { "name": "relay_status", "arguments": { "request_id": "r-bf27c0eee86547b5" } },
+    { "name": "relay_inbox", "arguments": {} }
+  ]
+}

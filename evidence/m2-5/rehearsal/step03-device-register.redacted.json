@@ -1,0 +1,11 @@
+CMD: POST http://127.0.0.1:28788/v1/devices/register  -H x-root-key <injected>  -d '{"owner_label":"m2-5-rehearsal-owner"}'
+NOTE: 已注册设备（Owner 面，README §2 口径）；令牌只进 TEMP 文件与进程环境
+RESULT (token redacted):
+{
+    "ok":  true,
+    "data":  {
+                 "device_id":  "dev-psf8",
+                 "owner_label":  "m2-5-rehearsal-owner",
+                 "token_redacted":  "\u003credacted:48 chars\u003e"
+             }
+}

@@ -1,0 +1,19 @@
+{
+    "args":  [
+                 "--conv-id",
+                 "c-6rorfd",
+                 "--profile",
+                 "default",
+                 "--thread-id",
+                 "r2-rehearsal-a"
+             ],
+    "tag":  "r2-presence-t1",
+    "calls":  [
+                  {
+                      "arguments":  {
+                                        "q":  "r2-gamma"
+                                    },
+                      "name":  "relay_discover"
+                  }
+              ]
+}

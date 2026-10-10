@@ -1,0 +1,8 @@
+{
+  "tag": "A-discover",
+  "args": ["--profile", "default", "--thread-id", "rehearsal-m25-a"],
+  "calls": [
+    { "name": "relay_discover", "arguments": { "project": "codex-relay" } },
+    { "name": "relay_inbox", "arguments": {} }
+  ]
+}

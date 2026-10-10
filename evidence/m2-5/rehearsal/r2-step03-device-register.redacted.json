@@ -1,0 +1,10 @@
+CMD: POST http://127.0.0.1:28788/v1/devices/register  -H x-root-key <injected>  -d '{"owner_label":"m2-5-r2-rehearsal"}'
+RESULT (token redacted):
+{
+    "ok":  true,
+    "data":  {
+                 "device_id":  "dev-ubq3",
+                 "owner_label":  "m2-5-r2-rehearsal",
+                 "token_redacted":  "\u003credacted:48 chars\u003e"
+             }
+}

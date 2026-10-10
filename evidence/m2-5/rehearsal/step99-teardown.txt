@@ -1,0 +1,8 @@
+TEARDOWN — stop self-started processes
+CMD: taskkill /PID 39848 /T /F
+SUCCESS: The process with PID 85316 (child process of PID 64168) has been terminated. | SUCCESS: The process with PID 64168 (child process of PID 96184) has been terminated. | SUCCESS: The process with PID 96184 (child process of PID 58780) has been terminated. | SUCCESS: The process with PID 58780 (child process of PID 1508) has been terminated. | SUCCESS: The process with PID 1508 (child process of PID 39848) has been terminated. | SUCCESS: The process with PID 39848 (child process of PID 61484) has been terminated.
+process alive after kill: NO
+port 28788 listening after kill: NO
+health endpoint unreachable after kill: True
+temp device-token file removed: yes
+MCP child processes: each driver run killed its own child (see "exit" records in step*.jsonl logs)

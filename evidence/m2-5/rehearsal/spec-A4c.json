@@ -1,0 +1,13 @@
+{
+  "tag": "A-send-1-final",
+  "args": ["--conv-id", "c-rmdgis", "--profile", "default", "--thread-id", "rehearsal-m25-a"],
+  "calls": [
+    { "name": "relay_send", "arguments": {
+      "to": "c-k25x7p",
+      "type": "TASK",
+      "body": "【m2-5 接入演练】任务 1：请回复一行确认文本，内容为「REHEARSAL-TASK1-OK」，并在结果中附证据引用。",
+      "result_requirement": "一行确认文本 + 证据引用",
+      "ttl_s": 3600
+    } }
+  ]
+}

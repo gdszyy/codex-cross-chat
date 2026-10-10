@@ -1,0 +1,15 @@
+{
+    "args":  [
+                 "--profile",
+                 "default",
+                 "--thread-id",
+                 "rehearsal-m25-a"
+             ],
+    "listTools":  true,
+    "tag":  "A-bootstrap",
+    "calls":  [
+                  {
+                      "name":  "relay_whoami"
+                  }
+              ]
+}

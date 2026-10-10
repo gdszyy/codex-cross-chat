@@ -1,0 +1,8 @@
+{
+  "tag": "r2-A-wrong-conv",
+  "args": ["--conv-id", "c-6rorfd", "--profile", "default", "--thread-id", "r2-rehearsal-a"],
+  "calls": [
+    { "name": "relay_send", "arguments": { "to": "c-r2-nonexist", "type": "TASK", "body": "查三抽验：发给不存在的 conv_id，预期即时 404 conv_not_found。" } },
+    { "name": "relay_discover", "arguments": { "project": "codex-relay" } }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "tag": "B-check1-whoami",
+  "args": ["--conv-id", "c-k25x7p", "--profile", "default", "--thread-id", "rehearsal-m25-b"],
+  "calls": [
+    { "name": "relay_whoami", "arguments": {} },
+    { "name": "relay_discover", "arguments": { "role": "worker" } }
+  ]
+}

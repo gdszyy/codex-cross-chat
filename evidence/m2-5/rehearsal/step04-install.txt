@@ -1,0 +1,6 @@
+STEP 1 (per access-guide §1.1/§1.2): install skill + MCP tool
+CMD: Test-Path C:\Users\Administrator\.codex\skills\relay\SKILL.md  ->  False
+NOTE: guide says placement is done by bridge installer / Owner ("agent 自己不写 ~/.codex"); rehearsal follows doc, does NOT write ~/.codex, uses repo copy packages/bridge/skill/SKILL.md (the file §1.1 points to) as the manual.
+CMD: Test-Path D:\claude\codex-relay\packages\bridge\src\mcp\server.ts  ->  True  (script path from §1.2)
+MCP launch shape per §1.2: npx tsx <server.ts> --profile default --thread-id <threadId>  (no --conv-id yet: fresh conversation has none; §2 bootstrap assigns it)
+env per §1.2: RELAY_URL=http://127.0.0.1:28788, RELAY_DEVICE_TOKEN=<injected from Owner device registration, not shown>

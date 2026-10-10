@@ -1,0 +1,6 @@
+
+> @relay/relay@0.1.0 start D:\claude\codex-relay\packages\relay
+> tsx src/index.ts
+
+[relay] database=pglite (embedded pglite)
+[relay] listening on http://127.0.0.1:28788  ws=/v1/device

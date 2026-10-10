@@ -1,0 +1,7 @@
+{
+  "tag": "B-inbox-1",
+  "args": ["--conv-id", "c-k25x7p", "--profile", "default", "--thread-id", "rehearsal-m25-b"],
+  "calls": [
+    { "name": "relay_inbox", "arguments": {} }
+  ]
+}

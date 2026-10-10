@@ -1,0 +1,3 @@
+R2 — evidence-as-array probe (doc §4.1 says: 传数组会得到 400 bad_field_evidence)
+CMD: POST http://127.0.0.1:28788/v1/requests/r-c71e4423fa88ddee/result  -H x-device-token <injected>  -d {conv_id, kind:STATUS, body, evidence:["a","b"]}
+RESULT: HTTP 400 {"ok":false,"error":{"code":"bad_field_evidence","message":"evidence must be a string (received array)"}}

@@ -1,0 +1,8 @@
+{
+  "tag": "A-read-result-1",
+  "args": ["--conv-id", "c-rmdgis", "--profile", "default", "--thread-id", "rehearsal-m25-a"],
+  "calls": [
+    { "name": "relay_read", "arguments": { "request_id": "r-727f89e6c29ce317" } },
+    { "name": "relay_status", "arguments": { "request_id": "r-727f89e6c29ce317" } }
+  ]
+}

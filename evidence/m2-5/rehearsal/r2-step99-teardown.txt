@@ -1,0 +1,7 @@
+R2 TEARDOWN — stop self-started processes
+CMD: taskkill /PID 49000 /T /F
+SUCCESS: The process with PID 64448 (child process of PID 76260) has been terminated. | SUCCESS: The process with PID 76260 (child process of PID 22908) has been terminated. | SUCCESS: The process with PID 22908 (child process of PID 66868) has been terminated. | SUCCESS: The process with PID 66868 (child process of PID 83216) has been terminated. | SUCCESS: The process with PID 83216 (child process of PID 49000) has been terminated. | SUCCESS: The process with PID 49000 (child process of PID 57364) has been terminated.
+process alive after kill: NO
+port 28788 listening after kill: NO
+health endpoint unreachable after kill: True
+temp device-token file removed: yes ; r2-pgdata removed: yes

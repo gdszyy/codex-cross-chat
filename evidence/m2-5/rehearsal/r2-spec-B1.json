@@ -1,0 +1,7 @@
+{
+  "tag": "r2-B-register-open-sources",
+  "args": ["--profile", "default", "--thread-id", "r2-rehearsal-b"],
+  "calls": [
+    { "name": "relay_register", "arguments": { "alias": "r2-beta", "role": "worker", "task": "m2-5 二轮盲演：执行方", "project": "codex-relay", "allow_sources": ["owner", "c-6rorfd"] } }
+  ]
+}

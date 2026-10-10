@@ -1,0 +1,2 @@
+CMD: Invoke-RestMethod http://127.0.0.1:28788/health
+RESULT: ok=true (after 9 attempts)

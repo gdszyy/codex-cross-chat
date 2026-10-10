@@ -1,0 +1,22 @@
+{
+    "args":  [
+                 "--conv-id",
+                 "c-rmdgis",
+                 "--profile",
+                 "default",
+                 "--thread-id",
+                 "rehearsal-m25-a"
+             ],
+    "tag":  "c2",
+    "calls":  [
+                  {
+                      "arguments":  {
+                                        "parent_request_id":  "1",
+                                        "to":  "c-k25x7p",
+                                        "body":  "链上限演练：c2 续链请求",
+                                        "type":  "CLARIFY"
+                                    },
+                      "name":  "relay_send"
+                  }
+              ]
+}

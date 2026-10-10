@@ -1,0 +1,7 @@
+{
+  "tag": "r2-A-register",
+  "args": ["--profile", "default", "--thread-id", "r2-rehearsal-a"],
+  "calls": [
+    { "name": "relay_register", "arguments": { "alias": "r2-alpha", "role": "manager", "task": "m2-5 二轮盲演：发起方", "project": "codex-relay" } }
+  ]
+}

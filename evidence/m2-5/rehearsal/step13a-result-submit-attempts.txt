@@ -1,0 +1,43 @@
+STEP 6 — submit result as target (B) via the documented-by-mechanism-design endpoint
+==============================================================================
+Context: access-guide.md documents NO conversation-side result-submission path
+(its §5 only says T1 results are auto-returned by the bridge). The only allowed
+pointer is mechanism-design.md §9 table row 18:
+  "POST /v1/requests/{id}/result | device_token＋绑定 | RESULT/STATUS 回传提交（执行方桥接把最终输出/中途状态写回服务端；主路径 HTTP…）— v1.1 补齐"
+Neither that row nor any other allowed doc names the auth HEADER for device_token
+(README only shows x-root-key for root key) or the request body schema.
+
+The four blind attempts below were made against
+POST http://127.0.0.1:28788/v1/requests/r-727f89e6c29ce317/result
+with header "x-device-token: <injected, never printed>" (name inferred by
+analogy with the documented x-root-key convention).
+
+--- attempt 1: body = {kind:"RESULT", body:"...", evidence:[...]} (no conv id) ---
+HTTP 400
+{"ok":false,"error":{"code":"binding_required","message":"provide conv_id or profile+thread_id"}}
+
+--- attempt 2: same body + query ?conv_id=c-k25x7p ---
+HTTP 400
+{"ok":false,"error":{"code":"binding_required","message":"provide conv_id or profile+thread_id"}}
+(query param ignored)
+
+--- attempt 3: body = {conv_id:"c-k25x7p", kind:"RESULT", body:"...", evidence:[...]} ---
+HTTP 500
+{"ok":false,"error":{"code":"internal_error","message":"Invalid input for string type"}}
+(binding passed; evidence as ARRAY rejected — and surfaced as 500, not a clean 400)
+
+--- attempt 4: body = {conv_id:"c-k25x7p", kind:"RESULT", body:"..."} (minimal) ---
+HTTP 200
+{"ok":true,"data":{"result":{"result_id":"res-d92baf5fec1e0d02",
+ "request_id":"r-727f89e6c29ce317","kind":"RESULT",
+ "body":"REHEARSAL-TASK1-OK — 任务 1 已按 result_requirement 完成：一行确认文本。证据引用：evidence/m2-5/rehearsal/step12-inbox-B.jsonl（任务原文）",
+ "evidence":null,"exec_status":null,"is_first":true,"created_at":1791609446913},"first":true}}
+
+Working recipe (undocumented in access-guide): header x-device-token + JSON body
+{conv_id, kind:"RESULT", body}. evidence stayed null; its accepted type is not
+documented anywhere in the allowed chain.
+
+Honesty note: before attempt 1, a repo-wide grep for the header name
+incidentally matched relay source (packages/relay/src/router.ts uses
+'x-device-token'), so the analogy guess was not fully blind. The doc gap stands:
+a real integrator following only the allowed docs must guess this header name.

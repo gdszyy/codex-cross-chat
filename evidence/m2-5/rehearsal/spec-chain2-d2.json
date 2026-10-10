@@ -1,0 +1,22 @@
+{
+    "args":  [
+                 "--conv-id",
+                 "c-rmdgis",
+                 "--profile",
+                 "default",
+                 "--thread-id",
+                 "rehearsal-m25-a"
+             ],
+    "tag":  "d2",
+    "calls":  [
+                  {
+                      "arguments":  {
+                                        "parent_request_id":  "r-093f7d64e6609b4b",
+                                        "to":  "c-k25x7p",
+                                        "body":  "Chain-limit rehearsal (d2) continuation",
+                                        "type":  "CLARIFY"
+                                    },
+                      "name":  "relay_send"
+                  }
+              ]
+}

@@ -1,0 +1,9 @@
+{"ts":"2026-10-10T05:07:21.630Z","event":"spawn","cmd":"npx tsx \"D:/claude/codex-relay/packages/bridge/src/mcp/server.ts\" --profile default --thread-id rehearsal-m25-a","pid":28592}
+{"ts":"2026-10-10T05:07:21.632Z","event":"send","msg":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"m2-5-rehearsal-driver","version":"0.0.1"}}}}
+{"ts":"2026-10-10T05:07:22.947Z","event":"recv","msg":{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"codex-relay","version":"0.1.0"}}}}
+{"ts":"2026-10-10T05:07:22.948Z","event":"initialized","serverInfo":{"name":"codex-relay","version":"0.1.0"},"protocolVersion":"2024-11-05"}
+{"ts":"2026-10-10T05:07:23.192Z","event":"send","msg":{"jsonrpc":"2.0","method":"notifications/initialized"}}
+{"ts":"2026-10-10T05:07:23.507Z","event":"send","msg":{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"relay_send","arguments":{"to":"c-k25x7p","type":"TASK","body":"【m2-5 接入演练】任务 1：请回复一行确认文本，内容为「REHEARSAL-TASK1-OK」，并在结果中附证据引用。","result_requirement":"一行确认文本 + 证据引用","ttl_s":3600}}}}
+{"ts":"2026-10-10T05:07:23.542Z","event":"recv","msg":{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"tool error: relay POST /v1/requests -> 400 binding_required provide conv_id or profile+thread_id"}],"isError":true}}}
+{"ts":"2026-10-10T05:07:23.542Z","event":"call-ok","tool":"relay_send","result":{"content":[{"type":"text","text":"tool error: relay POST /v1/requests -> 400 binding_required provide conv_id or profile+thread_id"}],"isError":true}}
+{"ts":"2026-10-10T05:07:24.567Z","event":"exit","child":{"killed":true,"exitCode":"forced"}}

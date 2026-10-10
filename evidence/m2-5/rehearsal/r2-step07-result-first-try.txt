@@ -1,0 +1,21 @@
+R2 STEP 6 — submit RESULT per access-guide §4.1 (first try, no blind guessing)
+DOC SAYS: POST /v1/requests/{request_id}/result  Header: x-device-token: <device-token>
+DOC SAYS body: {conv_id, kind:"RESULT", body, evidence:"<string>", exec_status?}
+CMD: POST http://127.0.0.1:28788/v1/requests/r-c71e4423fa88ddee/result  -H x-device-token <injected>  -d <json per §4.1, evidence as STRING>
+RESULT: HTTP 200 first-try; result_id + is_first shown below:
+{
+    "ok":  true,
+    "data":  {
+                 "result":  {
+                                "result_id":  "res-b1825b2578d8e135",
+                                "request_id":  "r-c71e4423fa88ddee",
+                                "kind":  "RESULT",
+                                "body":  "R2-REHEARSAL-OK â äºè½®ä»»å¡ 1 å·²å®æï¼ä¸è¡ç¡®è®¤ææ¬ã",
+                                "evidence":  "codex-thread:r2-rehearsal-b#turn:r2-turn-1",
+                                "exec_status":  "completed",
+                                "is_first":  true,
+                                "created_at":  1791611414844
+                            },
+                 "first":  true
+             }
+}

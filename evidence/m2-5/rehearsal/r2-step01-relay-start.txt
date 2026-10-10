@@ -1,0 +1,5 @@
+R2 STEP 0 — infra: relay restart for round-2 rehearsal (HEAD 6a36ddf)
+CMD: RELAY_ROOT_KEY=<env carrier, injected, never printed> HOST=127.0.0.1 PORT=28788 PGLITE_DIR=<evidence>\r2-pgdata  pnpm --filter @relay/relay start
+PID: 49000
+LOG (r2-relay-stdout.log head):
+System.Object[]

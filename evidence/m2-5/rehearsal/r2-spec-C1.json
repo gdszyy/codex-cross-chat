@@ -1,0 +1,8 @@
+{
+  "tag": "r2-C-register-presence-t0",
+  "args": ["--profile", "default", "--thread-id", "r2-rehearsal-c"],
+  "calls": [
+    { "name": "relay_register", "arguments": { "alias": "r2-gamma", "role": "observer", "task": "m2-5 二轮盲演：presence 时效观察", "project": "codex-relay" } },
+    { "name": "relay_discover", "arguments": { "q": "r2-gamma" } }
+  ]
+}

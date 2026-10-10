@@ -1,0 +1,4 @@
+R2 — presence decay measurement for r2-gamma (registered at server-ms 1791611508877)
+probe: GET http://127.0.0.1:28788/v1/roster?q=r2-gamma  -H x-device-token <injected>   every ~15s
+poll 1: elapsed≈84923 ms  online=True
+poll 2: elapsed≈100546 ms  online=False

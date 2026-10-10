@@ -1,0 +1,7 @@
+{
+  "tag": "A-check-notices",
+  "args": ["--conv-id", "c-rmdgis", "--profile", "default", "--thread-id", "rehearsal-m25-a"],
+  "calls": [
+    { "name": "relay_inbox", "arguments": {} }
+  ]
+}
