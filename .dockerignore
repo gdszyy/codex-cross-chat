@@ -1,0 +1,14 @@
+# Keep the build context small and never copy host installs into the image
+# (local node_modules contain absolute symlinks that would break the image).
+node_modules
+**/node_modules
+**/.tmp
+.tmp
+run
+coverage
+dist
+.pgdata
+*.db
+*.sqlite
+*.log
+.git

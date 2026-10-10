@@ -56,7 +56,7 @@ npx tsx scripts/dual-instance.ts --only=rev      # 只跑反向
 
 > **本仓目前只到"部署就绪"，不执行部署**——以下步骤由 Owner 复核后自行执行；本机未注册任何外部服务。
 
-1. **建服务**：Railway → New Project → **Deploy from GitHub repo** → 选本仓对应分支。Railway 以容器为单元部署；推送新提交会自动重建部署（`docs/m1-platform-research.md` §1.4）。
+1. **建服务**：Railway → New Project → **Deploy from GitHub repo** → 选本仓对应分支。**服务根＝仓根**：仓根有 `Dockerfile`（`node:22-bookworm-slim` ＋ corepack 启用 pnpm 10.33.0 ＋ `pnpm install --frozen-lockfile`（含 devDeps，生产用 tsx 跑 TS）＋ `CMD ["pnpm","--filter","@relay/relay","start"]`），Railway 检出到 Dockerfile 即**自动用它构建**（官方原文见 `docs/m1-platform-research.md` §1.4）；配套 `.dockerignore` 排除 `node_modules`/`.git`/`.tmp` 等，避免把本机安装带进镜像。若构建器未走 Dockerfile，兜底＝根 `package.json` 的 `start` 脚本（同一条命令）。推送新提交会自动重建部署。
 2. **加数据库**：同项目内 **Add → PostgreSQL**。数据库**默认私有**，同项目服务经 private network 可达（§1.3）。
 3. **绑定注入 `DATABASE_URL`**：在 relay 服务的 Variables 里**引用**数据库的 `DATABASE_URL`（Reference，**绑定注入、非手工填写**）。relay 有它就走 `pg` 驱动，没有则回退内嵌 pglite——生产必须注入。走**私有** `DATABASE_URL`，**不要**开 Public Access 用 `DATABASE_PUBLIC_URL`（会按 Network Egress 计费）。
 4. **唯一手工变量**：`RELAY_ROOT_KEY=<高熵令牌>`（生成与轮换见下）。全系统**只有它**一个手工密钥。
