@@ -188,6 +188,16 @@ bridge：`pnpm --filter @relay/bridge start -- --config docs/bridge-config.examp
 
 真实轮次用量：**R2 本轮 = 2 轮**（A→B→A：执行 1 ＋ 结果推送 1）；R1 另有方向 1 的 2 次失败尝试（各 2 轮）与反向 1 次（2 轮），累计 8 轮，如实披露。
 
+**打包站自检读数（R3，2026-10-10，全仓复跑）**：
+
+| 套件 | 命令 | 读数 | exit |
+| --- | --- | --- | --- |
+| relay（契约 ＋ 反向） | `pnpm --filter @relay/relay test` | **2 files / 34 passed**（24.5s） | 0 |
+| bridge（每文件独立进程） | `pnpm --filter @relay/bridge test`（`run-tests.mjs`） | **4/4 files**：integration 7 ＋ mcp 2 ＋ recovery **5** ＋ unit 2 ＝ **16 passed** | 0 |
+| 类型检查 | `tsc -p tsconfig.json --noEmit`（relay / bridge 各一次） | **0 / 0** | 0 |
+
+recovery 由 4 增至 **5**：恢复的「restarts safely when the turn was never started」用例（见 §f 残留项行）现直接覆盖 `reconcile` 空 marker 分支。
+
 **真实栈局限（诚实记录）**：对「线程刚建、其首轮仍在飞」的线程调 `thread/read` 返回 `-32603 ... rollout ... is empty`；该轮完成后即可正常回读（执行轮即如此）。桥接 `waitForTurn`（`packages/bridge/src/bridge.ts:357`）已把它当「尚未就绪」重试，故桥接侧无影响；双实例脚本改为容错重试并记录 `origin_readback_note`。已按收件箱契约投一行（类别 C，轻量，状态 新）。
 
 ---
