@@ -95,6 +95,13 @@ export async function handleHttp(
   const path = url.pathname;
   const method = req.method ?? 'GET';
 
+  // GET /health — unauthenticated liveness probe for the hosting platform's
+  // health check. No credentials, zero sensitive information; always 200 while
+  // the process is up.
+  if (method === 'GET' && path === '/health') {
+    return send(res, 200, { ok: true });
+  }
+
   const requireRoot = () => {
     const key = header(req, 'x-root-key');
     if (!key || key !== deps.rootKey) throw unauth('invalid root key');

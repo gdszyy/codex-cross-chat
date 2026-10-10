@@ -23,7 +23,7 @@ pnpm install
 
 # 1) 起中转服务（本机用嵌入式 PG；生产设 DATABASE_URL 走真 PG）
 #    唯一手工环境变量是连接密钥
-RELAY_ROOT_KEY=dev-key pnpm --filter @relay/relay start      # 默认 http://127.0.0.1:8788
+RELAY_ROOT_KEY=dev-key pnpm --filter @relay/relay start      # 默认 0.0.0.0:8788（本地只回环加 HOST=127.0.0.1）
 
 # 2) 注册一台设备（拿 device_token）
 curl -s -X POST http://127.0.0.1:8788/v1/devices/register \
@@ -62,9 +62,9 @@ npx tsx scripts/dual-instance.ts --only=rev      # 只跑反向
 4. **唯一手工变量**：`RELAY_ROOT_KEY=<高熵令牌>`（生成与轮换见下）。全系统**只有它**一个手工密钥。
 5. **检查项 · Serverless 必须保持关闭**：Railway 的 Serverless 一旦启用，服务空闲 5–10 分钟即休眠，首个请求冷启动**且可能返回 502**，直接打断常驻 WebSocket（官方原文见 `docs/m1-platform-research.md` §1.1）。部署后到服务 Settings 确认 **Serverless 未启用**。
 6. **网络入口**：公网入口必须 HTTPS / TLS 1.2+；WebSocket 走标准 TLS 端口，官方明确"可长期闲置保持"（§1.2）。
-7. **健康检查与重启行为**：本版**没有独立 `/health` 路由**，以端口监听作为健康信号（如需专用健康端点可另加）。平台侧重启 / 重部署**不是平滑停机**，连接会被断开——这正是设计上把"重连与持久化"当正常路径的原因：桥接断线后按指数退避重连（单次上限 60 s），每次重连先 **resume 持久游标**、再**补拉 `inbox`**，把离线期间入队的请求补执行（`packages/bridge/src/bridge.ts` `onConnected` / `pullInbox`）。
+7. **健康检查与重启行为**：已提供**无鉴权**健康端点 `GET /health`（恒 `200 {"ok":true}`，零敏感信息、不需根密钥或设备令牌），可在服务 Settings 里把它设为 Healthcheck Path。平台侧重启 / 重部署**不是平滑停机**，连接会被断开——这正是设计上把"重连与持久化"当正常路径的原因：桥接断线后按指数退避重连（单次上限 60 s），每次重连先 **resume 持久游标**、再**补拉 `inbox`**，把离线期间入队的请求补执行（`packages/bridge/src/bridge.ts` `onConnected` / `pullInbox`）。
 8. **数据库备份**：Railway 的 Backups 需自行开启（非默认），并按方案做一次恢复演练。
-9. **部署前须知（代码现状，须先确认）**：入口 `packages/relay/src/index.ts:27` 调 `relay.listen(port)`，而 `packages/relay/src/server.ts:59` 的 host 默认 `127.0.0.1`。容器托管平台（含 Railway）的边缘通常要求服务监听**容器可路由地址**（一般 `0.0.0.0`）。首版未提供 `HOST` 开关，**部署前需确认/补上监听地址**，否则平台可能连不上。
+9. **监听地址（已解决）**：生产入口 `packages/relay/src/index.ts` 按 `HOST` 环境变量绑定，**默认 `0.0.0.0`**（容器可路由，平台边缘可达）；本地只回环时设 `HOST=127.0.0.1`。`HOST` 是**带默认值的可选项**，不影响"`RELAY_ROOT_KEY` 是唯一必填手工变量"。（`packages/relay/src/server.ts` 的 `listen(port, host)` 默认仍为 `127.0.0.1`，供测试/嵌入式调用。）
 
 ### 连接密钥的生成与轮换
 
@@ -91,11 +91,11 @@ C:\Users\Administrator\.minimax\env\env.codex-relay.local     # 一行：RELAY_R
 
 ```bash
 pnpm install
-RELAY_ROOT_KEY=dev-key pnpm --filter @relay/relay start       # 内嵌库；默认 http://127.0.0.1:8788
+RELAY_ROOT_KEY=dev-key pnpm --filter @relay/relay start       # 内嵌库；默认 0.0.0.0:8788（本地只回环可加 HOST=127.0.0.1）
 pnpm --filter @relay/bridge start -- --config docs/bridge-config.example.json
 ```
 
-relay 默认监听 `127.0.0.1:8788`；**不设 `DATABASE_URL` → 用内嵌库**，设了才走真 PG（`packages/relay/src/index.ts`）。
+relay 入口默认监听 `0.0.0.0:8788`（容器托管用）；**本地只回环**请显式设 `HOST=127.0.0.1`。**不设 `DATABASE_URL` → 用内嵌库**，设了才走真 PG（`packages/relay/src/index.ts`）。健康检查端点：`GET /health`。
 
 ## 消息语义要点
 

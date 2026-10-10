@@ -66,6 +66,14 @@ describe('identity & auth', () => {
     expect((await api(t.baseUrl, 'GET', '/v1/admin/overview')).status).toBe(401);
     expect((await api(t.baseUrl, 'GET', '/v1/admin/export?layer=roster')).status).toBe(401);
   });
+
+  it('serves an unauthenticated /health probe with exactly {ok:true}', async () => {
+    const t = await setup();
+    // No root key, no device token — the platform health check must not need creds.
+    const r = await api(t.baseUrl, 'GET', '/health');
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ ok: true });
+  });
 });
 
 describe('roster & discovery', () => {

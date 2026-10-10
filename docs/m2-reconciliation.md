@@ -188,15 +188,15 @@ bridge：`pnpm --filter @relay/bridge start -- --config docs/bridge-config.examp
 
 真实轮次用量：**R2 本轮 = 2 轮**（A→B→A：执行 1 ＋ 结果推送 1）；R1 另有方向 1 的 2 次失败尝试（各 2 轮）与反向 1 次（2 轮），累计 8 轮，如实披露。
 
-**打包站自检读数（R3，2026-10-10，全仓复跑）**：
+**打包站自检读数（R3，2026-10-10，全仓复跑；含补丁轮）**：
 
 | 套件 | 命令 | 读数 | exit |
 | --- | --- | --- | --- |
-| relay（契约 ＋ 反向） | `pnpm --filter @relay/relay test` | **2 files / 34 passed**（24.5s） | 0 |
+| relay（契约 29 ＋ 反向 6） | `pnpm --filter @relay/relay test` | **2 files / 35 passed**（29.0s） | 0 |
 | bridge（每文件独立进程） | `pnpm --filter @relay/bridge test`（`run-tests.mjs`） | **4/4 files**：integration 7 ＋ mcp 2 ＋ recovery **5** ＋ unit 2 ＝ **16 passed** | 0 |
 | 类型检查 | `tsc -p tsconfig.json --noEmit`（relay / bridge 各一次） | **0 / 0** | 0 |
 
-recovery 由 4 增至 **5**：恢复的「restarts safely when the turn was never started」用例（见 §f 残留项行）现直接覆盖 `reconcile` 空 marker 分支。
+relay 由 34 增至 **35**：补丁轮新增 `/health` 契约用例；recovery 由 4 增至 **5**：恢复的「restarts safely when the turn was never started」用例（见 §f）现直接覆盖 `reconcile` 空 marker 分支。补丁轮只改 relay 侧（健康端点 / 监听地址），**bridge 套件未重跑**（未受影响），上表 bridge 读数为打包站初轮。
 
 **真实栈局限（诚实记录）**：对「线程刚建、其首轮仍在飞」的线程调 `thread/read` 返回 `-32603 ... rollout ... is empty`；该轮完成后即可正常回读（执行轮即如此）。桥接 `waitForTurn`（`packages/bridge/src/bridge.ts:357`）已把它当「尚未就绪」重试，故桥接侧无影响；双实例脚本改为容错重试并记录 `origin_readback_note`。已按收件箱契约投一行（类别 C，轻量，状态 新）。
 
@@ -216,7 +216,7 @@ recovery 由 4 增至 **5**：恢复的「restarts safely when the turn was neve
 10. **Railway 部署未做**：按任务边界不部署、不注册任何外部服务；`DATABASE_URL`/`pg` 驱动路径已实现但未在真实 Railway 上跑过。
 11. **`bridge export` 便利命令未做**（设计 §6.1 标注为可选、非首版必需）。
 12. **真实 Codex 轮次用量**：本轮 R2 真实轮次＝2（A→B→A：执行 1 ＋ 结果推送 1，`gpt-5.6-luna`）；R1 另有 2 次失败尝试（方向 1）与反向 2 轮，累计如实披露于 §d。
-13. **环境变量枚举（精度补全，复核 A5）**：**唯一必需的手工环境变量＝`RELAY_ROOT_KEY`**（`packages/relay/src/index.ts`）；`DATABASE_URL` 为 Railway 绑定注入（允许）。此外生产代码还读若干**带默认值的可选旋钮**：`PORT`、`PGLITE_DIR`（relay 入口）、`BRIDGE_CONFIG`（bridge 入口）、`RELAY_CONV_ID`/`RELAY_PROFILE`/`RELAY_THREAD_ID`/`RELAY_URL`/`RELAY_DEVICE_TOKEN`（MCP 工具，通道绑定注入，均有 CLI 参数等价物）。**不存在第二个手工密钥或必需变量**；「其余参数全是数据库配置项」的措辞应读作「非密钥的运行参数走数据库配置项」。
+13. **环境变量枚举（精度补全，复核 A5）**：**唯一必需的手工环境变量＝`RELAY_ROOT_KEY`**（`packages/relay/src/index.ts`）；`DATABASE_URL` 为 Railway 绑定注入（允许）。此外生产代码还读若干**带默认值的可选旋钮**：`PORT`、`HOST`（relay 入口，`HOST` 默认 `0.0.0.0`）、`PGLITE_DIR`（relay 入口）、`BRIDGE_CONFIG`（bridge 入口）、`RELAY_CONV_ID`/`RELAY_PROFILE`/`RELAY_THREAD_ID`/`RELAY_URL`/`RELAY_DEVICE_TOKEN`（MCP 工具，通道绑定注入，均有 CLI 参数等价物）。**不存在第二个手工密钥或必需变量**；「其余参数全是数据库配置项」的措辞应读作「非密钥的运行参数走数据库配置项」。
 
 ---
 
@@ -238,6 +238,8 @@ recovery 由 4 增至 **5**：恢复的「restarts safely when the turn was neve
 | **额外（复核 A7）`readResult` 死变量** | **已修** | `packages/relay/src/domain.ts:697` 起：删掉算而不用的 `missing`，返回式改为「终态且无 RESULT ⇒ result_missing」 | 该函数本体 |
 | **额外（复核 A5）单密钥枚举精度** | **已在文档补全** | 见 §e 第 13 条：除 `RELAY_ROOT_KEY`（唯一必需手工变量）与 `DATABASE_URL`（绑定注入）外，生产代码另读**带默认值的可选旋钮** `PORT`/`PGLITE_DIR`（`packages/relay/src/index.ts`）、`BRIDGE_CONFIG`（`packages/bridge/src/index.ts`）、`RELAY_CONV_ID/PROFILE/THREAD_ID/URL/DEVICE_TOKEN`（`packages/bridge/src/mcp/server.ts`，通道绑定注入，均有 CLI 等价）；**无第二个手工密钥或必需变量** | 本文件 §e |
 | **残留项（复审 #1）崩溃窗口用例被换出、未披露** | **已修（恢复等价用例）** | 如实披露：R1 的「restarts safely when the turn was never started」曾被 B2 的新用例换出，致 `reconcile` 的「marker 扫描为空 ⇒ 安全重启」分支（`packages/bridge/src/bridge.ts:467-470`）一度失去直接覆盖。本轮恢复等价用例 `packages/bridge/test/recovery.test.ts`「restarts safely when the turn was never started (intent written, no turnId)」：手工种入**无 turnId** 的 intent 行（`state.ts:115` 落的 `starting` 行）→ 重启 → 断言线程内恰 1 轮带 `relay:<id>` 标记、且该轮＝`turn_id`、本地/云端终态均 `completed`。**驱动归属已写死在用例注释**：`Bridge.start` 的 `reconcile()`（`bridge.ts:125`）在启动补拉（`bridge.ts:132`）之前运行，故该窗口由空 marker 分支重启，而非补拉路径 | 该用例本体；本轮亲跑通过（`-t "restarts safely"`，24.2s，exit 0） |
+| **补丁轮（监听地址）** | **已修** | 生产入口按 `HOST` 绑定、**默认 `0.0.0.0`**（容器可路由；本地只回环设 `HOST=127.0.0.1`）：`packages/relay/src/index.ts`（`const host = process.env.HOST ?? '0.0.0.0'` → `relay.listen(port, host)`，日志带 host）；`packages/relay/src/server.ts:59` 的 `listen(port, host='127.0.0.1')` 保留给测试/嵌入式调用。`HOST` 为**带默认值的可选项**，`RELAY_ROOT_KEY` 仍是唯一必填手工变量（§e#13 已补枚举） | 该入口本体；README 部署节第 9 条改为「已解决」并写明行为 |
+| **补丁轮（健康端点）** | **已修** | 新增 `GET /health`：无鉴权、零敏感信息、恒 `200 {"ok":true}`——`packages/relay/src/router.ts`（`handleHttp` 顶部、任何鉴权之前） | 新契约用例 `packages/relay/test/relay.contract.test.ts`「serves an unauthenticated /health probe with exactly {ok:true}」；README 部署节第 7 条改为指向该端点 |
 
 **顺带修掉的真实缺陷（本轮 tsc 首次全量跑出来后暴露）**：`packages/relay/src/domain.ts:474` `let root` 缺 `string|null` 注解（此前只跑 vitest、类型未过）；`packages/bridge/src/codexClient.ts:54` 补 stdin `error` 监听、`:82` `send` 加进程存活守卫（消除关停期的 `ERR_STREAM_WRITE_AFTER_END` 未处理异常）。两个包现在 `tsc -p tsconfig.json --noEmit` 均为 0。
 
