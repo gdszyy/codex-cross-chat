@@ -197,6 +197,26 @@ describe('permissions (§6)', () => {
   });
 });
 
+describe('§9 #18 result submission', () => {
+  it('returns 400 (not 500) when evidence is not a string', async () => {
+    const t = await setup();
+    const { dev, a, b } = await twoConvs(t);
+    const sent = await api(t.baseUrl, 'POST', '/v1/requests', {
+      token: dev.device_token,
+      body: { from_conv: a.conv_id, to: b.conv_id, type: 'TASK', body: 'do it' },
+    });
+    const id = sent.body.data.request_id;
+    // `evidence` is a string column: an array must be a clean, field-named 400,
+    // not the driver-level 500 it used to raise (which hid the real cause).
+    const r = await api(t.baseUrl, 'POST', `/v1/requests/${id}/result`, {
+      token: dev.device_token,
+      body: { conv_id: b.conv_id, kind: 'RESULT', body: 'done', evidence: ['git:abc'] },
+    });
+    expect(r.status).toBe(400);
+    expect(r.body.error.code).toBe('bad_field_evidence');
+  });
+});
+
 describe('§5.2 three-layer status', () => {
   it('moves delivery/exec/return through the real lifecycle', async () => {
     const t = await setup();

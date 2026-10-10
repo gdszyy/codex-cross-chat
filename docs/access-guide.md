@@ -60,13 +60,27 @@ relay_whoami          # → GET /v1/roster/me
 ### 路 A：自发登记（T1，桥接托管对话）
 
 ```
-relay_register { alias, role, task, project, task_ref? }
-#  → POST /v1/roster/register { profile, thread_id, alias, role, task, project }
+relay_register { alias, role, task, project, task_ref?, allow_sources? }
+#  → POST /v1/roster/register { profile, thread_id, alias, role, task, project, allow_sources }
 ```
 
-- 必需：`alias`、`role`（`manager|worker|verifier|observer`）、`task`（一句话当前职责）、`project`。
+- 必需：`alias`、`role`（`manager|worker|verifier|observer`）、`task`（一句话当前职责）、`project`；可选 `task_ref`。
 - 服务端还要求 `profile` + `thread_id`（绑定的三元组），由 MCP 通道自动带上。
-- 桥接会先确认"它创建的线程 = 你"，再分配 `conv_id`（形如 `c-XXXXXX`）。**你从此可被寻址**。
+- 桥接会先确认"它创建的线程 = 你"，再分配 `conv_id`（形如 `c-XXXXXX`）。
+
+**⚠ 登记成功后，必须带返回的 `conv_id` 以 `--conv-id` 重启 MCP 实例，才能发任务。** 工具的身份绑在**启动通道**上（§1.2），`relay_register` 只在服务端建了花名册行，当前实例的启动参数里还没有那个 `conv_id`；**不重启就发不出任务**，`relay_send` 会报 `400 binding_required "provide conv_id or profile+thread_id"`。做法：用 `--conv-id <c-XXXXXX>`（连同 `--profile`/`--thread-id`）重启实例，此后 `relay_send`/`relay_status`/`relay_read`/`relay_cancel` 才通过绑定校验。
+
+### 开放来源（`allow_sources`）
+
+`allow_sources`＝「**谁可以给我发任务**」的名单，**默认 `["owner"]`**（最严：只有 Owner 直接派活）。元素取值：
+
+| 取值 | 含义 |
+| --- | --- |
+| `owner` | Owner 直接派活（默认唯一项） |
+| `<conv_id>` | 指定对话可给我发任务（同项目对话互发用这个） |
+| `device:<设备id>` | 该设备名下的全部对话可给我发任务 |
+
+**语义**：默认登记的两个对话**互相发不了**（各自只接受 `owner`），要互发必须由**接收方**在登记/重登记时显式开放。重登记同 `profile`+`thread_id` 是**更新**（`conv_id` 不变）——即「重跑一次 `relay_register`，带上 `allow_sources: [对方 conv_id]`」。若目标没开放你，`relay_send` 会报 `403 source_not_allowed`（对齐机制设计 §2.2）。
 
 ### 路 B：Owner 给加入码
 
@@ -84,7 +98,7 @@ relay_join { code, alias? }
 #  → POST /v1/roster/join { code, profile, thread_id, alias? }
 ```
 
-加入码内可预设 `role` / `task` / `project`（服务端优先用码里的预设）；默认 24 小时有效、默认 1 次用完即废。
+加入码内可预设 `role` / `task` / `project`（服务端优先用码里的预设）；默认 24 小时有效、默认 1 次用完即废。**同样**：`relay_join` 只建花名册行，拿到 `conv_id` 后须带 `--conv-id` 重启实例才能发任务（见路 A 的 ⚠）；`allow_sources` 走加入码的预设或登记后再更新。
 
 ---
 
@@ -120,6 +134,30 @@ relay_join { code, alias? }
 - `parent_request_id`：续链时带上一环，链深 +1（见 §6 续轮上限）。
 - `client_key`：网络重试沿用同一编号，服务端按它去重（同 `client_key` → 同一请求）。
 
+### 4.1 对话侧提交结果 / 状态（RESULT / STATUS）
+
+九件工具里**没有**回传工具——回传的**主路径是 HTTP**（桥接代劳时同理）；执行方是**你自己**（手工跑、或不用桥接）时，用这个端点把结果或中途状态写回服务端：
+
+```
+POST https://<your-relay>/v1/requests/{request_id}/result
+Header: x-device-token: <device-token>        # 设备令牌（不是根密钥）；Bearer <token> 亦可
+Body:   {
+          "conv_id": "<你(执行方)的 conv_id>",   # 必填：你必须是该请求的 to_conv，否则 403 not_executor
+          "kind":    "RESULT",                  # 必填：RESULT（终态）或 STATUS（中途）
+          "body":    "<结果全文>",              # 必填：≤64 KB，超 → 413 body_too_large
+          "evidence": "<字符串引用>",           # 可选：**必须是字符串**，见下
+          "exec_status": "completed",           # 可选：写终态
+          "turn_id": "<本机轮次 id>",           # 可选
+          "result_missing": false               # 可选：终态但无结果时必须置 true
+        }
+```
+
+- **`evidence` 是字符串，不是数组**。正确形态例如 `"codex-thread:<threadId>#turn:<turnId>"`、一条 URL、或 Git 引用（多个证据请并进一个字符串）。传数组会得到 `400 bad_field_evidence`（字段校验，指明收到了 `array`）；同理 `body` 传非字符串得到 `400 bad_field_body`。
+- 绑定也可用 `profile`+`thread_id` 替代 `conv_id`（二者其一）。
+- `kind="RESULT"`：请求终态，**按条目幂等**——同一请求只有**第一条** RESULT 触发投递，之后的归档为 `is_first=false`、不再推送。
+- `kind="STATUS"`：中途状态，**不关闭请求**；与 §6.2「RESULT 后每条新 STATUS 各起一轮」衔接（等用户/缺材料时就发 STATUS，别编造结果）。
+- 读回用 `relay_read` 或 `GET /v1/requests/{id}/result`。
+
 ---
 
 ## 5. T1 / T2 服务等级边界
@@ -131,7 +169,7 @@ relay_join { code, alias? }
 | 身份 | 桥接创建并注册的线程（`tier=t1_managed`） | Owner 手工登记（`tier=t2_desktop`） |
 | 心跳 / presence | 有（30 s 心跳；`presence.mode=heartbeat`） | **无**（`presence.mode=last_pull_at`、`heartbeat=false`、`stale=true`） |
 | 投递 | push（结果成为新轮次） | `delivery_mode=manual_pull` |
-| 能做什么 | 收任务、自动执行、回传结果；结果可自动 push 回原对话 | 发出请求、查状态、读结果；**每次被打开时主动 `relay_inbox`**（无自动唤醒） |
+| 能做什么 | 收任务、自动执行、回传结果（对话侧手工回传见 §4.1）；结果可自动 push 回原对话 | 发出请求、查状态、读结果；**每次被打开时主动 `relay_inbox`**（无自动唤醒） |
 | 不能做什么 | —— | **首版不支持把既有桌面对话自动接入执行**（上游对 paginated 线程 `read/resume` fail closed；见 `docs/m1-compat-report.md` §6.1、对账表 C1） |
 
 **结论口径**：首版只声明「桥接自建 T1 对话之间的完整往返」已打通；「接入既有指定桌面对话」在当前栈上**未达**（T2 只能被手工登记为"可被通知/可发起"的对话，不能自动接管执行）。
@@ -174,9 +212,10 @@ relay_join { code, alias? }
 1. `relay_inbox` 看 `pending_for_me` 是否为空；空 ≠ 没任务，可能是**还没被 claim**。
 2. 你是 T2 → **没有心跳**，系统不会主动唤醒你，必须**每次被打开就拉一次** `relay_inbox`。
 3. 是 T1 → 检查桥接是否在线（`GET /v1/roster?role=` 看 `presence.online`）；离线期间入队的会在桥接**重连后被补拉执行**。
+   - **`presence.online` 的时效语义**：它只表示**近期有过心跳，或刚登记**——刚登记后的短窗口内即显示 `true`（此时可能并无桥接 WS 在线），无心跳后约 30–90 s 才衰减为 `false`。所以 `online=true` **不等于桥接此刻在线**，只当"最近活跃"读。
 
 **查三 · 我发不出去 / 结果缺失？**
-依次核对：目标 `conv_id` 是否精确（错投 → 目标不认领）；`allow_sources` 是否允许你（不允许 → **403**）；`body` 是否 ≤64 KB（超 → **413**）；是否触发链上限（→ **409**，去 `notices` 看链上限通知）；结果是否 `result_missing=true`（执行失败 ≠ 完成）。
+依次核对：目标 `conv_id` 是否精确（**不存在 → 即时 `404 conv_not_found "no such conversation: …"`**，不会静默排队）；`allow_sources` 是否允许你（不允许 → **403 `source_not_allowed`**）；`body` 是否 ≤64 KB（超 → **413 `body_too_large`**）；回传 `body`/`evidence` 类型是否给错（非字符串 → **400 `bad_field_body` / `bad_field_evidence`**）；是否触发链上限（→ **409 `chain_limit_reached`**，去 `notices` 看链上限通知）；结果是否 `result_missing=true`（执行失败 ≠ 完成）。
 
 ---
 

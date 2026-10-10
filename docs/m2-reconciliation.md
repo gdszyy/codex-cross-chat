@@ -192,11 +192,11 @@ bridge：`pnpm --filter @relay/bridge start -- --config docs/bridge-config.examp
 
 | 套件 | 命令 | 读数 | exit |
 | --- | --- | --- | --- |
-| relay（契约 29 ＋ 反向 6） | `pnpm --filter @relay/relay test` | **2 files / 35 passed**（29.0s） | 0 |
+| relay（契约 30 ＋ 反向 6） | `pnpm --filter @relay/relay test` | **2 files / 36 passed**（55.7s） | 0 |
 | bridge（每文件独立进程） | `pnpm --filter @relay/bridge test`（`run-tests.mjs`） | **4/4 files**：integration 7 ＋ mcp 2 ＋ recovery **5** ＋ unit 2 ＝ **16 passed** | 0 |
 | 类型检查 | `tsc -p tsconfig.json --noEmit`（relay / bridge 各一次） | **0 / 0** | 0 |
 
-relay 由 34 增至 **35**：补丁轮新增 `/health` 契约用例；recovery 由 4 增至 **5**：恢复的「restarts safely when the turn was never started」用例（见 §f）现直接覆盖 `reconcile` 空 marker 分支。补丁轮只改 relay 侧（健康端点 / 监听地址），**bridge 套件未重跑**（未受影响），上表 bridge 读数为打包站初轮。
+relay 由 34 增至 **36**：补丁轮新增 `/health` 契约用例，文档返工轮新增 RESULT 端点参数校验用例；recovery 由 4 增至 **5**：恢复的「restarts safely when the turn was never started」用例（见 §f）现直接覆盖 `reconcile` 空 marker 分支。补丁轮与文档返工轮只改 relay 侧，**bridge 套件未重跑**（未受影响），上表 bridge 读数为打包站初轮。
 
 **真实栈局限（诚实记录）**：对「线程刚建、其首轮仍在飞」的线程调 `thread/read` 返回 `-32603 ... rollout ... is empty`；该轮完成后即可正常回读（执行轮即如此）。桥接 `waitForTurn`（`packages/bridge/src/bridge.ts:357`）已把它当「尚未就绪」重试，故桥接侧无影响；双实例脚本改为容错重试并记录 `origin_readback_note`。已按收件箱契约投一行（类别 C，轻量，状态 新）。
 
@@ -240,6 +240,8 @@ relay 由 34 增至 **35**：补丁轮新增 `/health` 契约用例；recovery �
 | **残留项（复审 #1）崩溃窗口用例被换出、未披露** | **已修（恢复等价用例）** | 如实披露：R1 的「restarts safely when the turn was never started」曾被 B2 的新用例换出，致 `reconcile` 的「marker 扫描为空 ⇒ 安全重启」分支（`packages/bridge/src/bridge.ts:467-470`）一度失去直接覆盖。本轮恢复等价用例 `packages/bridge/test/recovery.test.ts`「restarts safely when the turn was never started (intent written, no turnId)」：手工种入**无 turnId** 的 intent 行（`state.ts:115` 落的 `starting` 行）→ 重启 → 断言线程内恰 1 轮带 `relay:<id>` 标记、且该轮＝`turn_id`、本地/云端终态均 `completed`。**驱动归属已写死在用例注释**：`Bridge.start` 的 `reconcile()`（`bridge.ts:125`）在启动补拉（`bridge.ts:132`）之前运行，故该窗口由空 marker 分支重启，而非补拉路径 | 该用例本体；本轮亲跑通过（`-t "restarts safely"`，24.2s，exit 0） |
 | **补丁轮（监听地址）** | **已修** | 生产入口按 `HOST` 绑定、**默认 `0.0.0.0`**（容器可路由；本地只回环设 `HOST=127.0.0.1`）：`packages/relay/src/index.ts`（`const host = process.env.HOST ?? '0.0.0.0'` → `relay.listen(port, host)`，日志带 host）；`packages/relay/src/server.ts:59` 的 `listen(port, host='127.0.0.1')` 保留给测试/嵌入式调用。`HOST` 为**带默认值的可选项**，`RELAY_ROOT_KEY` 仍是唯一必填手工变量（§e#13 已补枚举） | 该入口本体；README 部署节第 9 条改为「已解决」并写明行为 |
 | **补丁轮（健康端点）** | **已修** | 新增 `GET /health`：无鉴权、零敏感信息、恒 `200 {"ok":true}`——`packages/relay/src/router.ts`（`handleHttp` 顶部、任何鉴权之前） | 新契约用例 `packages/relay/test/relay.contract.test.ts`「serves an unauthenticated /health probe with exactly {ok:true}」；README 部署节第 7 条改为指向该端点 |
+| **文档返工轮（盲演 DOC-FAIL 逐条）** | **已修（6 条全落）** | ①接入指南 §2 补「登记后须带 `--conv-id` 重启实例才能发任务」（原文「你从此可被寻址」的错觉已删）；②§2 参数清单补 `allow_sources`＋新增「开放来源」小节（默认 `["owner"]`，取值 `conv_id`/`device:<id>`/`owner`，对齐机制设计 §2.2）；③新增 §4.1「对话侧提交结果/状态」——`POST /v1/requests/{id}/result`、头 `x-device-token`、body schema，并写明 **`evidence` 必须是字符串（数组→400）**；④§7 查三改为「错投 → 即时 `404 conv_not_found`」；⑤§7 查二补 `presence.online` 时效语义；⑥工程项见下 | `docs/access-guide.md`（§2/§4.1/§5/§7）；判决 `docs/review/REHEARSAL-M2.5.md` |
+| **工程项（RESULT 端点参数类型）** | **已修** | `POST /v1/requests/{id}/result` 对非字符串 `body`/`evidence` 由 500 改为 **400 带字段校验**：`packages/relay/src/router.ts:388-394`（`bad_field_body` / `bad_field_evidence`，回执含收到的类型），避免驱动层 500 掩盖真实原因 | 新契约用例 `packages/relay/test/relay.contract.test.ts`「returns 400 (not 500) when evidence is not a string」 |
 
 **顺带修掉的真实缺陷（本轮 tsc 首次全量跑出来后暴露）**：`packages/relay/src/domain.ts:474` `let root` 缺 `string|null` 注解（此前只跑 vitest、类型未过）；`packages/bridge/src/codexClient.ts:54` 补 stdin `error` 监听、`:82` `send` 加进程存活守卫（消除关停期的 `ERR_STREAM_WRITE_AFTER_END` 未处理异常）。两个包现在 `tsc -p tsconfig.json --noEmit` 均为 0。
 

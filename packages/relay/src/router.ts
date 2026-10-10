@@ -383,6 +383,15 @@ export async function handleHttp(
     if (request.to_conv !== target.conv_id) {
       throw forbidden('not_executor', 'only the executing conversation can submit results');
     }
+    // Field validation at the HTTP boundary: `body` and `evidence` are string
+    // columns, so a non-string (e.g. an array) must fail as a clean 400 with the
+    // offending field named — never as an opaque 500 from the driver.
+    if (body.body !== undefined && body.body !== null && typeof body.body !== 'string') {
+      throw bad('bad_field_body', `body must be a string (received ${Array.isArray(body.body) ? 'array' : typeof body.body})`);
+    }
+    if (body.evidence !== undefined && body.evidence !== null && typeof body.evidence !== 'string') {
+      throw bad('bad_field_evidence', `evidence must be a string (received ${Array.isArray(body.evidence) ? 'array' : typeof body.evidence})`);
+    }
     const { result, first } = await store.submitResult({
       requestId: request.request_id,
       kind: body.kind === 'STATUS' ? 'STATUS' : 'RESULT',
