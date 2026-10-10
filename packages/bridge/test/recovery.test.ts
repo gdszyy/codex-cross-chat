@@ -127,6 +127,81 @@ describe('§5.3 crash window', () => {
     expect(rec!.status).toBe('result_pending_verify');
   });
 
+  it('restarts safely when the turn was never started (intent written, no turnId)', async () => {
+    // Directly covers reconcile's "marker scan is empty ⇒ safe to restart"
+    // branch (bridge.ts:467-470). The crash window is seeded by hand: a dispatch
+    // row exists with NO turnId, i.e. the bridge wrote its startup intent and
+    // then died before turn/start. `Bridge.start` runs `reconcile()` (bridge.ts:125)
+    // *before* the startup inbox pull (bridge.ts:132), so on restart this window
+    // is driven by reconcile — not by the pull path.
+    const stateDir = path.join(TMP, 'restart-' + Date.now());
+    const mockState = path.join(stateDir, 'mock.json');
+    const env = trackEnv(await startRelay());
+    const devA = await registerDevice(env);
+    const devB = await registerDevice(env);
+    const shared = await openState(stateDir);
+    cleanups.push(() => shared.close());
+    const b0 = trackBridge(
+      await startBridge(env, {
+        deviceToken: devB.device_token,
+        bindings: [{ alias: 'beta', role: 'worker', task: 'execute', project: 'codex-relay' }],
+        cwd: process.cwd(),
+        state: shared.state,
+        mockStateFile: mockState,
+      }),
+    );
+    const bindB = b0.bindings.get('beta')!;
+    const a = trackBridge(
+      await startBridge(env, {
+        deviceToken: devA.device_token,
+        bindings: [{ alias: 'alpha', role: 'manager', task: 'dispatch', project: 'codex-relay' }],
+        cwd: process.cwd(),
+      }),
+    );
+    const bindA = a.bindings.get('alpha')!;
+    await updateAllowSources(env, devB.device_token, bindB.threadId!, 'beta', 'worker', [bindA.convId!]);
+    await b0.stop(); // B offline
+
+    const sent = await send(env, devA.device_token, {
+      from_conv: bindA.convId!,
+      to: bindB.convId!,
+      type: 'TASK',
+      body: 'never started',
+    });
+    const id = sent.body.data.request_id;
+
+    // Seed the crash-after-intent window: a dispatch row with no turnId.
+    await shared.state.intent(id, id, bindB.convId!, bindB.threadId!, `relay:${id}`);
+    const beforeRec = await shared.state.get(id);
+    expect(beforeRec!.status).toBe('starting');
+    expect(beforeRec!.turn_id).toBeFalsy(); // nothing was ever started
+
+    const b2 = trackBridge(
+      await startBridge(env, {
+        deviceToken: devB.device_token,
+        bindings: [{ alias: 'beta', role: 'worker', task: 'execute', project: 'codex-relay' }],
+        cwd: process.cwd(),
+        state: shared.state,
+        mockStateFile: mockState,
+      }),
+    );
+    const st = await waitFor(async () => {
+      const r = await getRequest(env, devA.device_token, id);
+      return r.exec_status === 'completed' ? r : undefined;
+    }, 25_000, 'restarted and completed');
+    expect(st.turn_id).toBeTruthy();
+    const rec = await b2.state.get(id);
+    expect(rec!.status).toBe('completed');
+    expect(rec!.marker).toBe(`relay:${id}`);
+    // Exactly one execution, and it is the turn reconcile started.
+    const thread = await b2.bridge.codexClient.threadRead(bindB.threadId!, true);
+    const matching = (thread.turns ?? []).filter((t: any) =>
+      (t.items ?? []).some((i: any) => typeof i.text === 'string' && i.text.includes('relay:' + id)),
+    );
+    expect(matching.length).toBe(1);
+    expect(matching[0].id).toBe(st.turn_id);
+  });
+
   it('executes a request that arrived while the bridge was offline (real path, no hand-written intent)', async () => {
     const stateDir = path.join(TMP, 'offline-' + Date.now());
     const mockState = path.join(stateDir, 'mock.json');
