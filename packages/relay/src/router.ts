@@ -98,9 +98,11 @@ export async function handleHttp(
 
   // GET /health — unauthenticated liveness probe for the hosting platform's
   // health check. No credentials, zero sensitive information; always 200 while
-  // the process is up.
+  // the process is up. `db` names the storage backend so a redeploy can be told
+  // apart from a persistent deployment at a glance (postgres = DATABASE_URL
+  // bound; pglite = ephemeral in-container storage).
   if (method === 'GET' && path === '/health') {
-    return send(res, 200, { ok: true });
+    return send(res, 200, { ok: true, db: store.db.kind === 'pg' ? 'postgres' : 'pglite' });
   }
 
   const requireRoot = () => {

@@ -69,12 +69,12 @@ describe('identity & auth', () => {
     expect((await api(t.baseUrl, 'GET', '/v1/admin/export?layer=roster')).status).toBe(401);
   });
 
-  it('serves an unauthenticated /health probe with exactly {ok:true}', async () => {
+  it('serves an unauthenticated /health probe carrying ok and the storage backend', async () => {
     const t = await setup();
     // No root key, no device token — the platform health check must not need creds.
     const r = await api(t.baseUrl, 'GET', '/health');
     expect(r.status).toBe(200);
-    expect(r.body).toEqual({ ok: true });
+    expect(r.body).toEqual({ ok: true, db: 'pglite' }); // tests run on embedded pglite
   });
 });
 
@@ -614,10 +614,16 @@ describe('§2.2 conversation presence follows the heartbeat', () => {
 });
 
 describe('§6 response encoding', () => {
-  it('declares charset=utf-8 on JSON responses', async () => {
+  it('declares charset=utf-8 on JSON responses and reports the storage backend on /health', async () => {
     const t = await setup();
     const res = await rfetch(t.baseUrl + '/health');
     expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8');
+    const body: any = await res.json();
+    expect(body.ok).toBe(true);
+    // Storage backend at a glance: pglite = ephemeral (state lost on redeploy),
+    // postgres = DATABASE_URL bound.
+    expect(['pglite', 'postgres']).toContain(body.db);
+    expect(body.db).toBe('pglite'); // these tests run on embedded pglite
     const err = await rfetch(t.baseUrl + '/v1/admin/overview');
     expect(err.status).toBe(401);
     expect(err.headers.get('content-type')).toBe('application/json; charset=utf-8');

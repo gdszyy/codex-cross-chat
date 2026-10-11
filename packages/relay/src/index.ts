@@ -28,6 +28,21 @@ async function main(): Promise<void> {
   console.log(
     `[relay] database=${db.kind}${process.env.DATABASE_URL ? ' (DATABASE_URL)' : ' (embedded pglite)'}`,
   );
+  if (db.kind === 'pglite') {
+    // Root cause of the "state vanished after redeploy" incident: without a
+    // bound PostgreSQL the relay silently falls back to an in-container pglite
+    // on ephemeral disk. Make that one glance away in the logs.
+    const hosted = Boolean(
+      process.env.RAILWAY_ENVIRONMENT ||
+        process.env.RAILWAY_PROJECT_ID ||
+        process.env.NODE_ENV === 'production',
+    );
+    const msg =
+      '[relay] WARN: ephemeral storage — no DATABASE_URL, running on embedded pglite; ' +
+      'devices / roster / messages will be LOST on redeploy. Bind DATABASE_URL to a PostgreSQL service.';
+    if (hosted) console.warn(msg);
+    else console.log('[relay] note: embedded pglite (local dev) — state is ephemeral and resets on restart.');
+  }
 
   const relay = await createRelay({ db, rootKey });
   const actual = await relay.listen(port, host);
