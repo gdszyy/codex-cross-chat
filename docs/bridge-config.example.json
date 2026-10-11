@@ -2,13 +2,19 @@
   "relay_url": "http://127.0.0.1:8788",
   "device_token": "REPLACE_WITH_DEVICE_TOKEN_FROM_POST_/v1/devices/register",
   "profile": "default",
+  "_codex_command_note": "macOS/Linux: use \"codex\" with args [\"app-server\",\"--stdio\"].  Windows: a bare \"codex\" fails with ENOENT and a full path to codex.cmd fails with EINVAL, so use the cmd.exe form below instead:  \"codex_command\": \"cmd.exe\",  \"codex_args\": [\"/c\",\"codex\",\"app-server\",\"--stdio\"]",
   "codex_command": "codex",
   "codex_args": ["app-server", "--stdio"],
+  "_codex_command_windows": {
+    "codex_command": "cmd.exe",
+    "codex_args": ["/c", "codex", "app-server", "--stdio"]
+  },
   "model": "gpt-5.6-luna",
   "cwd": "D:\\claude\\codex-relay\\evidence\\m2\\workspace",
   "allow_sources": ["owner"],
   "state_dir": null,
   "turn_timeout_ms": 120000,
+  "heartbeat_ms": 60000,
   "bindings": [
     {
       "alias": "device-a-worker",

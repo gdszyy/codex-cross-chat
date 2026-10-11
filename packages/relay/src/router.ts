@@ -52,7 +52,8 @@ function bearer(req: IncomingMessage): string | undefined {
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
   const payload = typeof body === 'string' ? body : JSON.stringify(body);
   res.writeHead(status, {
-    'content-type': typeof body === 'string' ? 'text/plain; charset=utf-8' : 'application/json',
+    'content-type':
+      typeof body === 'string' ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8',
     ...headers,
   });
   res.end(payload);

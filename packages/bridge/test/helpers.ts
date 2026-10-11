@@ -19,6 +19,24 @@ export const MOCK_PATH = path.resolve(__dirname, '../../mock-codex/mock-app-serv
 
 export const ROOT_KEY = 'bridge-test-root-key';
 
+/**
+ * fetch with a bounded retry on *network-level* failures only (socket refused /
+ * reset under machine load). HTTP status codes are never retried, so assertion
+ * semantics are unchanged.
+ */
+export async function rfetch(url: string, init?: RequestInit): Promise<Response> {
+  let lastErr: unknown;
+  for (let i = 0; i < 4; i++) {
+    try {
+      return await fetch(url, init);
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 150 * (i + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 export interface TestEnv {
   relay: Relay;
   baseUrl: string;
@@ -49,7 +67,7 @@ export async function startRelay(opts: {
 }
 
 export async function registerDevice(env: TestEnv, ownerLabel = 'owner') {
-  const res = await fetch(env.baseUrl + '/v1/devices/register', {
+  const res = await rfetch(env.baseUrl + '/v1/devices/register', {
     method: 'POST',
     headers: { 'x-root-key': ROOT_KEY, 'content-type': 'application/json' },
     body: JSON.stringify({ owner_label: ownerLabel }),
@@ -120,7 +138,7 @@ export async function startBridge(
 }
 
 export async function rosterMe(env: TestEnv, token: string, threadId: string) {
-  const res = await fetch(
+  const res = await rfetch(
     env.baseUrl + `/v1/roster/me?profile=default&thread_id=${encodeURIComponent(threadId)}`,
     { headers: { authorization: `Bearer ${token}` } },
   );
@@ -129,7 +147,7 @@ export async function rosterMe(env: TestEnv, token: string, threadId: string) {
 }
 
 export async function updateAllowSources(env: TestEnv, token: string, threadId: string, alias: string, role: string, allowSources: string[]) {
-  const res = await fetch(env.baseUrl + '/v1/roster/register', {
+  const res = await rfetch(env.baseUrl + '/v1/roster/register', {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -148,7 +166,7 @@ export async function updateAllowSources(env: TestEnv, token: string, threadId: 
 }
 
 export async function send(env: TestEnv, token: string, body: any) {
-  const res = await fetch(env.baseUrl + '/v1/requests', {
+  const res = await rfetch(env.baseUrl + '/v1/requests', {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -157,7 +175,7 @@ export async function send(env: TestEnv, token: string, body: any) {
 }
 
 export async function getRequest(env: TestEnv, token: string, id: string) {
-  const res = await fetch(env.baseUrl + `/v1/requests/${id}`, {
+  const res = await rfetch(env.baseUrl + `/v1/requests/${id}`, {
     headers: { authorization: `Bearer ${token}` },
   });
   const body: any = await res.json();
@@ -165,7 +183,7 @@ export async function getRequest(env: TestEnv, token: string, id: string) {
 }
 
 export async function submitResult(env: TestEnv, token: string, id: string, payload: any) {
-  const res = await fetch(env.baseUrl + `/v1/requests/${id}/result`, {
+  const res = await rfetch(env.baseUrl + `/v1/requests/${id}/result`, {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify(payload),

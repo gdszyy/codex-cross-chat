@@ -114,6 +114,9 @@ export class Bridge {
         set: (v) => this.state.setCursor(v),
       },
       onConnected: () => void this.safe(() => this.pullInbox().then(() => undefined), 'reconnectPull'),
+      // §2.2: advertise the hosted conversations with every heartbeat so their
+      // presence.online follows the bridge, not just the device connection.
+      convsProvider: () => [...this.byConv.keys()].filter((c): c is string => Boolean(c)),
     });
 
     // 1) Ensure a thread per binding and register it with the relay.

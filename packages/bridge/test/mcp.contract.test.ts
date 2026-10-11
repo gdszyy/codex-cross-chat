@@ -8,7 +8,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { registerDevice, sleep, startRelay, type TestEnv } from './helpers.js';
+import { registerDevice, rfetch, sleep, startRelay, type TestEnv } from './helpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MCP_SERVER = path.resolve(__dirname, '../src/mcp/server.ts');
@@ -85,7 +85,7 @@ async function setup() {
   const env = await startRelay();
   cleanups.push(() => env.close());
   const dev = await registerDevice(env);
-  const reg = await fetch(env.baseUrl + '/v1/roster/register', {
+  const reg = await rfetch(env.baseUrl + '/v1/roster/register', {
     method: 'POST',
     headers: { authorization: `Bearer ${dev.device_token}`, 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -161,7 +161,7 @@ describe('relay MCP tool server', () => {
   it('relay_discover returns the roster and relay_send enforces permissions', async () => {
     const { env, dev, convId } = await setup();
     // A second conversation that does NOT allow convId as a source.
-    const reg2 = await fetch(env.baseUrl + '/v1/roster/register', {
+    const reg2 = await rfetch(env.baseUrl + '/v1/roster/register', {
       method: 'POST',
       headers: { authorization: `Bearer ${dev.device_token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ profile: 'default', thread_id: 'th-other', alias: 'other', role: 'worker', task: 'x', project: 'codex-relay' }),

@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import path from 'node:path';
 import {
   getRequest,
+  rfetch,
   registerDevice,
   send,
   sleep,
@@ -197,7 +198,7 @@ describe('duplicate terminal notification', () => {
       20_000,
       'completes',
     );
-    const res = await fetch(env.baseUrl + `/v1/requests/${id}/result`, {
+    const res = await rfetch(env.baseUrl + `/v1/requests/${id}/result`, {
       headers: { authorization: `Bearer ${devA.device_token}` },
     });
     const body: any = await res.json();
@@ -266,6 +267,41 @@ describe('§5.4 delivery is idempotent per item', () => {
   });
 });
 
+describe('§2.2 conversation presence follows the bridge heartbeat', () => {
+  it('stays online while the bridge runs and decays after it stops', async () => {
+    const env = trackEnv(await startRelay({ config: { offline_after_s: 2 } }));
+    const devA = await registerDevice(env);
+    const cwd = process.cwd();
+    const a = trackBridge(
+      await startBridge(env, {
+        deviceToken: devA.device_token,
+        bindings: [{ alias: 'alpha', role: 'manager', task: 'dispatch', project: 'codex-relay' }],
+        cwd,
+        heartbeatMs: 300,
+      }),
+    );
+    const bindA = a.bindings.get('alpha')!;
+
+    const onlineOf = async (id: string) => {
+      const res = await rfetch(env.baseUrl + '/v1/roster', {
+        headers: { authorization: `Bearer ${devA.device_token}` },
+      });
+      const body: any = await res.json();
+      return body.data.find((x: any) => x.conv_id === id)?.presence?.online;
+    };
+
+    // The bridge heartbeat must keep the conversation itself marked seen — the
+    // regression was that it decayed to offline despite a live device.
+    await sleep(2600);
+    expect(await onlineOf(bindA.convId!)).toBe(true);
+
+    // Bridge stops ⇒ no heartbeat ⇒ the conversation decays.
+    await a.stop();
+    await sleep(2600);
+    expect(await onlineOf(bindA.convId!)).toBe(false);
+  });
+});
+
 describe('§5.4 cancel while running', () => {
   it('interrupts the turn and records the real terminal state', async () => {
     const { env, devA, b, bindA, bindB } = await pair({ fault: 'delay', delayMs: 60_000 });
@@ -281,7 +317,7 @@ describe('§5.4 cancel while running', () => {
       return rec && rec.status === 'running' ? rec : undefined;
     }, 10_000, 'turn running');
 
-    const cancelRes = await fetch(env.baseUrl + `/v1/requests/${id}/cancel`, {
+    const cancelRes = await rfetch(env.baseUrl + `/v1/requests/${id}/cancel`, {
       method: 'POST',
       headers: { authorization: `Bearer ${devA.device_token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ from_conv: bindA.convId }),

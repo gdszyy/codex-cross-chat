@@ -8,6 +8,8 @@ import {
   api,
   registerConv,
   registerDevice,
+  rfetch,
+  sleep,
   startTestRelay,
   TestWs,
   type TestRelay,
@@ -461,7 +463,7 @@ describe('§6 human diagnostic face', () => {
   it('exports roster CSV with a UTF-8 BOM and a tier column', async () => {
     const t = await setup();
     const { dev } = await twoConvs(t);
-    const res = await fetch(t.baseUrl + '/v1/admin/export?layer=roster', {
+    const res = await rfetch(t.baseUrl + '/v1/admin/export?layer=roster', {
       headers: { 'x-root-key': t.rootKey },
     });
     // fetch().text() strips a leading BOM per the WHATWG UTF-8 decode algorithm,
@@ -575,6 +577,50 @@ describe('§7.2 admin config wiring', () => {
     expect(
       (await api(t.baseUrl, 'POST', '/v1/admin/config', { rootKey: t.rootKey, body: { key: 'nope', value: 2 } })).status,
     ).toBe(400);
+  });
+});
+
+describe('§2.2 conversation presence follows the heartbeat', () => {
+  it('decays when stale and is refreshed by a heartbeat that names the conv', async () => {
+    const t = await setup({ offline_after_s: 1 });
+    const dev = await registerDevice(t);
+    const conv = await registerConv(t, dev.device_token, { thread_id: 'th-p', alias: 'presence', role: 'worker' });
+
+    const onlineOf = async (id: string) => {
+      const list = await api(t.baseUrl, 'GET', '/v1/roster', { token: dev.device_token });
+      return list.body.data.find((x: any) => x.conv_id === id)?.presence?.online;
+    };
+
+    // Freshly registered ⇒ online.
+    expect(await onlineOf(conv.conv_id)).toBe(true);
+
+    // No heartbeat for longer than the window ⇒ the conversation decays offline.
+    await sleep(1400);
+    expect(await onlineOf(conv.conv_id)).toBe(false);
+
+    // A heartbeat that names the conversation refreshes it (§2.2 heartbeat mode).
+    const ws = new TestWs(t.wsUrl, dev.device_token);
+    await ws.ready;
+    await ws.waitFor((m) => m.type === 'hello');
+    ws.send({ type: 'heartbeat', convs: [conv.conv_id] });
+    await ws.waitFor((m) => m.type === 'heartbeat_ack');
+    expect(await onlineOf(conv.conv_id)).toBe(true);
+
+    // …and decays again once the heartbeat stops.
+    await sleep(1400);
+    expect(await onlineOf(conv.conv_id)).toBe(false);
+    ws.close();
+  });
+});
+
+describe('§6 response encoding', () => {
+  it('declares charset=utf-8 on JSON responses', async () => {
+    const t = await setup();
+    const res = await rfetch(t.baseUrl + '/health');
+    expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8');
+    const err = await rfetch(t.baseUrl + '/v1/admin/overview');
+    expect(err.status).toBe(401);
+    expect(err.headers.get('content-type')).toBe('application/json; charset=utf-8');
   });
 });
 

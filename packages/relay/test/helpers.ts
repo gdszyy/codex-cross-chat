@@ -10,6 +10,23 @@ import WebSocket from 'ws';
 
 export const TEST_ROOT_KEY = 'test-root-key-local-only';
 
+/**
+ * fetch with a bounded retry on *network-level* failures only (socket refused /
+ * reset under machine load). HTTP statuses are never retried.
+ */
+export async function rfetch(url: string, init?: RequestInit): Promise<Response> {
+  let lastErr: unknown;
+  for (let i = 0; i < 4; i++) {
+    try {
+      return await fetch(url, init);
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 150 * (i + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 export interface TestRelay {
   relay: Relay;
   baseUrl: string;
@@ -48,7 +65,7 @@ export async function api(
   if (opts.rootKey) headers['x-root-key'] = opts.rootKey;
   if (opts.token) headers['authorization'] = `Bearer ${opts.token}`;
   if (opts.body !== undefined) headers['content-type'] = 'application/json';
-  const res = await fetch(baseUrl + path, {
+  const res = await rfetch(baseUrl + path, {
     method,
     headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,

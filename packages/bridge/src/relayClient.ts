@@ -18,6 +18,13 @@ export interface RelayClientOptions {
   onConnected?: () => void;
   /** Durable event cursor (survives restarts). */
   cursorStore?: { get(): Promise<number>; set(value: number): Promise<void> };
+  /**
+   * Conversation ids this bridge currently hosts. Sent with every heartbeat so
+   * the server can refresh their `last_seen_at` (§2.2 presence.mode=heartbeat).
+   * Without this the conversation presence decays to offline even while the
+   * device-level heartbeat keeps flowing.
+   */
+  convsProvider?: () => string[];
 }
 
 /** §7.2 exponential reconnect backoff, single interval capped at `maxMs`. */
@@ -197,7 +204,14 @@ export class RelayClient {
 
   private startHeartbeat() {
     if (this.heartbeat) clearInterval(this.heartbeat);
-    this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), this.heartbeatMs);
+    const beat = () => {
+      const convs = this.opts.convsProvider?.() ?? [];
+      // §2.2: heartbeat presence must name the hosted conversations — omit the
+      // field entirely when there are none (the server keeps the last set).
+      this.send(convs.length ? { type: 'heartbeat', convs } : { type: 'heartbeat' });
+    };
+    beat(); // refresh immediately on (re)connect instead of waiting one interval
+    this.heartbeat = setInterval(beat, this.heartbeatMs);
   }
 
   private send(obj: unknown): void {

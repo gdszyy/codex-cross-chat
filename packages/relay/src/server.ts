@@ -38,7 +38,7 @@ export async function createRelay(opts: RelayOptions): Promise<Relay> {
       const status = err instanceof HttpError ? err.status : 500;
       const code = err instanceof HttpError ? err.code : 'internal_error';
       if (!res.headersSent) {
-        res.writeHead(status, { 'content-type': 'application/json' });
+        res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
       }
       res.end(JSON.stringify({ ok: false, error: { code, message: String(err?.message ?? err) } }));
     });

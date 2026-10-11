@@ -35,6 +35,22 @@ cp docs/bridge-config.example.json bridge.config.json
 pnpm --filter @relay/bridge start -- --config ../../../bridge.config.json
 ```
 
+### 桥接的启动形态（平台差异）
+
+`codex_command` / `codex_args` 是**按平台不同**的，写错会在桥接启动时直接失败（表现为 codex 子进程起不来）：
+
+| 平台 | `codex_command` | `codex_args` | 失败形态（实测） |
+| --- | --- | --- | --- |
+| macOS / Linux | `codex` | `["app-server","--stdio"]` | — |
+| **Windows** | `cmd.exe` | `["/c","codex","app-server","--stdio"]` | 裸名 `codex` → `ENOENT`；指向 `codex.cmd` 的全路径 → `EINVAL` |
+
+`docs/bridge-config.example.json` 里两种形态都给了（Windows 形态在 `_codex_command_windows`）；本机 Windows 用 `cmd.exe` 形态。`heartbeat_ms` 控制桥接心跳间隔（默认 60s），它同时决定 **对话 presence 的刷新频率**：桥接会把本机已登记的 `conv_id` 随每次心跳上报，服务端据此刷新这些对话的 `last_seen_at`（机制设计 §2.2 `presence.mode=heartbeat`）。
+
+```bash
+# Windows 起桥接（PowerShell）
+node --import tsx packages\bridge\src\index.ts --config C:\path\to\bridge.config.json
+```
+
 ## 测试
 
 ```bash

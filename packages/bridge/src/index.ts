@@ -21,6 +21,7 @@ interface BridgeConfig {
   allow_sources?: string[];
   state_dir?: string;
   turn_timeout_ms?: number;
+  heartbeat_ms?: number;
   bindings: Binding[];
 }
 
@@ -48,6 +49,7 @@ async function main(): Promise<void> {
     bindings: raw.bindings ?? [],
     allowSources: raw.allow_sources,
     turnTimeoutMs: raw.turn_timeout_ms,
+    heartbeatMs: raw.heartbeat_ms,
     onLog: (level, message) => {
       const line = `[bridge ${new Date().toISOString()}] ${level}: ${message}`;
       if (level === 'warn' || level === 'error') console.error(line);
