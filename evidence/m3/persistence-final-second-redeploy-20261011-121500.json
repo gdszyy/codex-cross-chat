@@ -1,0 +1,32 @@
+{
+    "checked_at":  "2026-10-11T12:12:06.6365121+08:00",
+    "note":  "second consecutive redeploy (push of c5694ef) — survivors still present",
+    "health":  {
+                   "ok":  true,
+                   "db":  "postgres"
+               },
+    "survivors":  {
+                      "device_id":  "dev-3mi5",
+                      "conv_id":  "c-pl1wdg"
+                  },
+    "devices":  [
+                    {
+                        "device_id":  "dev-3mi5",
+                        "owner_label":  "device-a",
+                        "revoked":  false,
+                        "online":  true,
+                        "last_seen_at":  1791691887105
+                    }
+                ],
+    "roster":  [
+                   {
+                       "conv_id":  "c-pl1wdg",
+                       "alias":  "device-a-worker",
+                       "role":  "worker",
+                       "project":  "codex-cross-chat",
+                       "tier":  "t1_managed",
+                       "roster_status":  "active"
+                   }
+               ],
+    "verdict":  "persistent-verified-second-redeploy"
+}
