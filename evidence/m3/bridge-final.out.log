@@ -1,0 +1,7 @@
+[bridge 2026-10-11T03:53:25.633Z] info: model/list: gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna
+[bridge 2026-10-11T03:53:29.024Z] info: device-a-worker registered as c-pl1wdg
+[bridge 2026-10-11T03:53:31.533Z] info: ws connecting wss://codex-cross-chat-production.up.railway.app/v1/device?token=***
+[bridge] running
+[bridge 2026-10-11T03:53:33.303Z] info: ws open
+[bridge 2026-10-11T03:56:15.256Z] info: ws connecting wss://codex-cross-chat-production.up.railway.app/v1/device?token=***
+[bridge 2026-10-11T03:56:17.442Z] info: ws open

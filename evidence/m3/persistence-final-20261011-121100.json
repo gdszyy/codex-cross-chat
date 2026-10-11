@@ -1,0 +1,38 @@
+{
+    "checked_at":  "2026-10-11T12:08:52.4841840+08:00",
+    "relay":  "https://codex-cross-chat-production.up.railway.app",
+    "health":  {
+                   "ok":  true,
+                   "db":  "postgres"
+               },
+    "redeploy_marker":  "[bridge 2026-10-11T03:56:13.415Z] warn: ws closed; reconnect in 500ms",
+    "survivors":  {
+                      "device_id":  "dev-3mi5",
+                      "conv_id":  "c-pl1wdg",
+                      "conv_presence":  {
+                                            "online":  true,
+                                            "last_seen_at":  1791691577780,
+                                            "mode":  "heartbeat"
+                                        }
+                  },
+    "devices":  [
+                    {
+                        "device_id":  "dev-3mi5",
+                        "owner_label":  "device-a",
+                        "revoked":  false,
+                        "online":  true,
+                        "last_seen_at":  1791691577777
+                    }
+                ],
+    "roster":  [
+                   {
+                       "conv_id":  "c-pl1wdg",
+                       "alias":  "device-a-worker",
+                       "role":  "worker",
+                       "project":  "codex-cross-chat",
+                       "tier":  "t1_managed",
+                       "roster_status":  "active"
+                   }
+               ],
+    "verdict":  "persistent-verified"
+}
