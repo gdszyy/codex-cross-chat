@@ -1,0 +1,11 @@
+[bridge 2026-10-11T03:41:14.713Z] warn: ws closed; reconnect in 500ms
+[bridge 2026-10-11T03:41:16.040Z] warn: ws error: Unexpected server response: 401
+[bridge 2026-10-11T03:41:16.134Z] warn: ws closed; reconnect in 1000ms
+[bridge 2026-10-11T03:41:17.837Z] warn: ws error: Unexpected server response: 401
+[bridge 2026-10-11T03:41:17.917Z] warn: ws closed; reconnect in 2000ms
+[bridge 2026-10-11T03:41:20.609Z] warn: ws error: Unexpected server response: 401
+[bridge 2026-10-11T03:41:20.617Z] warn: ws closed; reconnect in 4000ms
+[bridge 2026-10-11T03:41:25.261Z] warn: ws error: Unexpected server response: 401
+[bridge 2026-10-11T03:41:25.267Z] warn: ws closed; reconnect in 8000ms
+[bridge 2026-10-11T03:41:33.936Z] warn: ws error: Unexpected server response: 401
+[bridge 2026-10-11T03:41:33.938Z] warn: ws closed; reconnect in 16000ms

@@ -1,0 +1,17 @@
+{
+    "checked_at":  "2026-10-11T11:41:42.1844222+08:00",
+    "relay":  "https://codex-cross-chat-production.up.railway.app",
+    "health":  {
+                   "ok":  true,
+                   "db":  "pglite"
+               },
+    "devices":  [
+
+                ],
+    "roster":  [
+
+               ],
+    "expected_device":  "dev-3shf",
+    "expected_conv":  "c-yxhw0y",
+    "verdict":  "wiped-ephemeral"
+}
