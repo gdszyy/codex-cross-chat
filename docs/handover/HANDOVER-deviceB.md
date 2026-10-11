@@ -6,6 +6,14 @@
 - **这份文档带你做什么**：从零把这台新设备接进「Codex 跨设备对话通信」——装前置 → 取代码 → 让 Owner 给你注册设备 → 写桥接配置 → 起桥接并验证 → 把对话登记进名册 → 会收发/查/读 → 故障三查 → **通知 Owner 做双向闭环验证**。
 - **权威在哪**：接入语义以仓内 `docs/access-guide.md`（接入权威）为准，部署/桥接/**平台差异**以 `README.md` 为准，机制以 `docs/mechanism-design.md` 为准。本文只给**步骤＋指针**，不整段复抄。
 
+## 0.5 一段话交接（把这段粘给那台设备上的 Codex，并附上它的 device_id 与 device_token）
+
+把下面这段**整段**粘给新设备上的 Codex，并另附该设备的 `device_id` 与 `device_token`（凭证纪律见 §3：不进 git、不进日志、不贴对话正文）。它读完这段就会照本文档往下做：
+
+```text
+你要把这台设备接入 codex-cross-chat 跨设备通信系统，步骤如下：①git clone https://github.com/gdszyy/codex-cross-chat 并 pnpm install；②通读 docs/handover/HANDOVER-deviceB.md 并严格照做，接入语义以 docs/access-guide.md 为权威；③我会另外给你本设备的 device_id 与 device_token——填进桥接配置即可，禁止写入 git、日志或任何外发内容；④按文档的平台启动形态把桥接跑成常驻 → 按文档登记你所属对话（relay_register，角色/任务/项目自拟并告诉我）→ 带返回的 --conv-id 重启工具实例；⑤跑文档的验证与故障三查，全过后向我报告：conv_id、桥接进程号、/health 与 /v1/roster 读数。约束：不修改 ~/.codex 任何文件；真实模型轮次最多 1 轮；文档与实际不符时停下如实报差异，不自行发明步骤。
+```
+
 ## 1. 前置条件
 
 - **Node ≥ 20**（生产镜像用 `node:22`，建议 22）。
