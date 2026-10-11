@@ -1,0 +1,45 @@
+{
+    "conv_id":  "c-yxhw0y",
+    "relay":  "https://codex-cross-chat-production.up.railway.app",
+    "samples":  [
+                    {
+                        "t":  "2026-10-11T11:32:24.5818430+08:00",
+                        "online":  true,
+                        "last_seen_at":  1791689515891,
+                        "device":  "heartbeat"
+                    },
+                    {
+                        "t":  "2026-10-11T11:32:54.8280409+08:00",
+                        "online":  true,
+                        "last_seen_at":  1791689545861,
+                        "device":  "heartbeat"
+                    },
+                    {
+                        "t":  "2026-10-11T11:33:25.0444281+08:00",
+                        "online":  true,
+                        "last_seen_at":  1791689575864,
+                        "device":  "heartbeat"
+                    },
+                    {
+                        "t":  "2026-10-11T11:33:55.2516830+08:00",
+                        "online":  true,
+                        "last_seen_at":  1791689605863,
+                        "device":  "heartbeat"
+                    },
+                    {
+                        "t":  "2026-10-11T11:34:25.5362102+08:00",
+                        "online":  true,
+                        "last_seen_at":  1791689635873,
+                        "device":  "heartbeat"
+                    },
+                    {
+                        "t":  "2026-10-11T11:34:55.8122196+08:00",
+                        "online":  true,
+                        "last_seen_at":  1791689665923,
+                        "device":  "heartbeat"
+                    }
+                ],
+    "checked_at":  "2026-10-11T11:34:55.8142342+08:00",
+    "all_online":  true,
+    "window_seconds":  150
+}

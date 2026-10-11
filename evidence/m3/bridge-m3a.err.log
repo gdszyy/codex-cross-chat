@@ -1,0 +1,9 @@
+[bridge] fatal Error: relay POST /v1/roster/register -> 401 unauthorized unknown device token
+    at RelayClient.http (D:\claude\codex-relay\packages\bridge\src\relayClient.ts:76:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Bridge.ensureBinding (D:\claude\codex-relay\packages\bridge\src\bridge.ts:177:17)
+    at async Bridge.start (D:\claude\codex-relay\packages\bridge\src\bridge.ts:124:7)
+    at async main (D:\claude\codex-relay\packages\bridge\src\index.ts:61:3) {
+  status: 401,
+  code: 'unauthorized'
+}

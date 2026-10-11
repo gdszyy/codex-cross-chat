@@ -80,7 +80,8 @@ npx tsx scripts/dual-instance.ts --only=rev      # 只跑反向
 6. **网络入口**：公网入口必须 HTTPS / TLS 1.2+；WebSocket 走标准 TLS 端口，官方明确"可长期闲置保持"（§1.2）。
 7. **健康检查与重启行为**：已提供**无鉴权**健康端点 `GET /health`（恒 `200 {"ok":true}`，零敏感信息、不需根密钥或设备令牌），可在服务 Settings 里把它设为 Healthcheck Path。平台侧重启 / 重部署**不是平滑停机**，连接会被断开——这正是设计上把"重连与持久化"当正常路径的原因：桥接断线后按指数退避重连（单次上限 60 s），每次重连先 **resume 持久游标**、再**补拉 `inbox`**，把离线期间入队的请求补执行（`packages/bridge/src/bridge.ts` `onConnected` / `pullInbox`）。
 8. **数据库备份**：Railway 的 Backups 需自行开启（非默认），并按方案做一次恢复演练。
-9. **监听地址（已解决）**：生产入口 `packages/relay/src/index.ts` 按 `HOST` 环境变量绑定，**默认 `0.0.0.0`**（容器可路由，平台边缘可达）；本地只回环时设 `HOST=127.0.0.1`。`HOST` 是**带默认值的可选项**，不影响"`RELAY_ROOT_KEY` 是唯一必填手工变量"。（`packages/relay/src/server.ts` 的 `listen(port, host)` 默认仍为 `127.0.0.1`，供测试/嵌入式调用。）
+9. **持久性（必检，实测踩过）**：relay 的**事实源必须是 Railway 上的 PostgreSQL 服务**（项目内 `DATABASE_URL` 绑定注入）。若 `DATABASE_URL` 未绑定，relay 会退回**容器内嵌入式 pglite**，数据落在临时文件系统上——**每次重新部署即全部丢失**：设备与花名册归零（`GET /v1/admin/overview` 的 `devices`/`roster_count` 变 0），已下发的 `device_token` 全部返回 `401 unauthorized unknown device token`。**检查判据**：① 项目内存在 PostgreSQL 服务且 relay 服务已引用它（Variables 里能看到 `DATABASE_URL`，而非仅在本地或未设置）；② 做一次**重新部署**，重部署后 `GET /v1/admin/overview`（根密钥）的 `devices`/`roster_count` **不得归零**——归零即说明落在临时盘上，须先绑库再继续。
+10. **监听地址（已解决）**：生产入口 `packages/relay/src/index.ts` 按 `HOST` 环境变量绑定，**默认 `0.0.0.0`**（容器可路由，平台边缘可达）；本地只回环时设 `HOST=127.0.0.1`。`HOST` 是**带默认值的可选项**，不影响"`RELAY_ROOT_KEY` 是唯一必填手工变量"。（`packages/relay/src/server.ts` 的 `listen(port, host)` 默认仍为 `127.0.0.1`，供测试/嵌入式调用。）
 
 ### 连接密钥的生成与轮换
 
