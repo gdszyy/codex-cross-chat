@@ -18,6 +18,7 @@ export interface BridgeConfig {
   state_dir?: string;
   turn_timeout_ms?: number;
   heartbeat_ms?: number;
+  result_delivery_mode?: 'push_turn' | 'manual_read';
   bindings?: Binding[];
   pairing?: { code_file?: string; alias: string; role: string; task: string; owner_label?: string };
   pairing_receipts?: { pairing_id: string; peer_conv_id: string; conv_id: string; thread_id: string }[];
@@ -74,6 +75,9 @@ export function readConfig(file: string): BridgeConfig {
 export function configOptions(file: string, codeFile?: string): BridgeOptions & { stateDir: string } {
   file = outsideCodex(file);
   const raw = readConfig(file);
+  if (raw.result_delivery_mode !== undefined && !['push_turn', 'manual_read'].includes(raw.result_delivery_mode)) {
+    throw new Error('result_delivery_mode must be push_turn or manual_read');
+  }
   if (raw.pairing) outsideGit(file); // Refuse an unsafe destination BEFORE consuming the one-shot code.
   if (raw.pairing && (raw.bindings?.length ?? 0) > 0) throw new Error('pairing bootstrap requires an empty bindings list; use saved config after redemption');
   const relative = (p: string) => path.resolve(path.dirname(file), p);
@@ -97,6 +101,7 @@ export function configOptions(file: string, codeFile?: string): BridgeOptions & 
     codexArgs: raw.codex_args ?? (process.platform === 'win32' ? ['/d', '/s', '/c', 'codex app-server --stdio'] : ['app-server', '--stdio']),
     model: raw.model ?? 'gpt-5.6-luna', cwd: raw.cwd ?? process.cwd(), bindings: raw.bindings ?? [],
     allowSources: raw.allow_sources, turnTimeoutMs: raw.turn_timeout_ms, heartbeatMs: raw.heartbeat_ms, stateDir,
+    resultDeliveryMode: raw.result_delivery_mode,
     ...(raw.pairing ? { pairing: { code: code!, alias: raw.pairing.alias, role: raw.pairing.role,
       task: raw.pairing.task, ownerLabel: raw.pairing.owner_label } } : {}),
     preparePairing: async () => {

@@ -52,6 +52,8 @@ export interface BridgeOptions {
   onLog?: (level: string, message: string) => void;
   heartbeatMs?: number;
   maxBackoffMs?: number;
+  /** Read results explicitly without spending another model turn on this device. */
+  resultDeliveryMode?: 'push_turn' | 'manual_read';
 }
 
 export interface PairingReceipt {
@@ -426,6 +428,10 @@ export class Bridge {
   /** T1 push delivery: a result for a conversation we own becomes a new turn. */
   private async deliverResultToConversation(requestId: string): Promise<void> {
     if (this.stopping) return;
+    if (this.opts.resultDeliveryMode === 'manual_read') {
+      this.log('info', `result available for ${requestId}; read explicitly (no local model turn)`);
+      return;
+    }
     const result = await this.relay.readResult(requestId);
     const owner = result.request ? this.byConv.get(result.request.return_addr) : undefined;
     if (!owner?.threadId) return;
