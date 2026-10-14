@@ -183,13 +183,21 @@ export class Bridge {
 
   private async ensureBinding(b: Binding): Promise<void> {
     const existing = await this.state.getBinding(b.alias);
+    if (existing && existing.profile !== this.opts.profile) throw new Error('saved binding profile differs from config; recovery paused');
+    if (existing?.thread_id && b.threadId && existing.thread_id !== b.threadId) throw new Error('saved thread differs from config; recovery paused');
     if (!b.threadId && existing?.thread_id) b.threadId = existing.thread_id;
     if (!b.threadId) {
-      b.threadId = await this.codex.threadStart(this.opts.model, this.opts.cwd);
+      b.threadId = await this.codex.threadStart(this.opts.model, this.opts.cwd, b.alias);
       // Keep the stable local thread even if registration fails or the process
       // stops. Never start another thread just because the relay was offline.
       await this.state.saveBinding(b.alias, this.opts.profile, b.threadId);
       this.log('info', `created thread for ${b.alias}: ${b.threadId}`);
+    } else {
+      // thread/read only reads persisted history; it does not attach the
+      // thread to this new App Server process for turn/start. Missing history
+      // is a blocking recovery error, never permission to replace the binding.
+      await this.codex.threadResume(b.threadId);
+      this.log('info', `resumed thread for ${b.alias}: ${b.threadId}`);
     }
     this.byAlias.set(b.alias, b);
 
@@ -197,6 +205,8 @@ export class Bridge {
     try { current = await this.relay.me({ profile: this.opts.profile, thread_id: b.threadId }); }
     catch (e) { if ((e as any).code !== 'unbound') throw e; }
     if (!current?.conv_id) current = undefined;
+    const expectedConv = b.convId ?? existing?.conv_id;
+    if (expectedConv && current?.conv_id !== expectedConv) throw new Error('saved conversation binding unavailable or changed; recovery paused');
     if (current && current.project !== b.project) throw new Error('existing conversation project differs from config; registration paused');
 
     // Register (idempotent on the relay: same device+profile+thread → same conv).
@@ -231,10 +241,12 @@ export class Bridge {
     }
     if (!receipt) {
       await this.state.saveBootstrap(p.alias, { status: 'creating_thread' });
-      const threadId = await this.codex.threadStart(this.opts.model, this.opts.cwd);
+      const threadId = await this.codex.threadStart(this.opts.model, this.opts.cwd, p.alias);
       await this.state.saveBinding(p.alias, this.opts.profile, threadId);
       receipt = { status: 'ready', thread_id: threadId };
       await this.state.saveBootstrap(p.alias, receipt);
+    } else {
+      await this.codex.threadResume(receipt.thread_id);
     }
     // Write intent BEFORE making a one-shot request. A timeout/crash can mean
     // the invitation was consumed: startup must not issue another request.
@@ -331,7 +343,7 @@ export class Bridge {
 
   private async processRequestInner(requestId: string): Promise<void> {
     const rec = await this.state.get(requestId);
-    if (rec && ['running', 'completed', 'interrupted', 'result_pending_verify', 'abandoned'].includes(rec.status)) {
+    if (rec && ['running', 'completed', 'interrupted', 'failed', 'result_pending_verify', 'abandoned'].includes(rec.status)) {
       this.log('info', `dedupe: ${requestId} already ${rec.status}`);
       return;
     }
@@ -529,7 +541,15 @@ export class Bridge {
       }
       // status 'starting' with no turnId: search thread history by marker.
       const thread = await this.codex.threadRead(binding.threadId, true).catch(() => null);
-      const matches = (thread?.turns ?? []).filter((t: any) =>
+      if (!thread || thread.id !== binding.threadId || thread.historyMode !== 'legacy' || !Array.isArray(thread.turns)) {
+        // A failed read is not positive evidence of an empty history. Starting
+        // again here could duplicate work; require human reconciliation.
+        await this.state.finish(rec.request_id, 'result_pending_verify');
+        this.log('warn', `history unavailable for ${rec.request_id}; automatic replay paused`);
+        result.pending++;
+        continue;
+      }
+      const matches = thread.turns.filter((t: any) =>
         (t.items ?? []).some((i: any) => typeof i.text === 'string' && i.text.includes(rec.marker)),
       );
       if (matches.length === 1) {

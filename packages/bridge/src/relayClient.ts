@@ -43,6 +43,7 @@ export class RelayClient {
   private cursor = 0;
   private attempt = 0;
   private heartbeat?: NodeJS.Timeout;
+  private reconnectTimer?: NodeJS.Timeout;
   private closed = false;
   private connected = false;
   private heartbeatMs: number;
@@ -166,12 +167,14 @@ export class RelayClient {
 
   connect(): void {
     this.closed = false;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     const url = this.opts.baseUrl.replace(/^http/, 'ws') + `/v1/device?token=${encodeURIComponent(this.opts.deviceToken ?? '')}`;
     this.log('info', `ws connecting ${url.replace(/token=[^&]+/, 'token=***')}`);
     const ws = new WebSocket(url);
     this.ws = ws;
 
     ws.on('open', () => {
+      if (this.closed || this.ws !== ws) return;
       this.connected = true;
       this.attempt = 0;
       this.log('info', 'ws open');
@@ -185,11 +188,12 @@ export class RelayClient {
             /* keep in-memory cursor */
           }
         }
+        if (this.closed || this.ws !== ws) return;
         this.send({ type: 'hello' });
         if (this.cursor > 0) this.send({ type: 'resume', cursor: this.cursor });
         this.opts.onConnected?.();
         this.startHeartbeat();
-      })();
+      })().catch(() => this.log('warn', 'device channel initialization failed'));
     });
 
     ws.on('message', (raw) => {
@@ -201,11 +205,11 @@ export class RelayClient {
       }
       if (msg.type === 'event') {
         this.cursor = Math.max(this.cursor, Number(msg.id ?? 0));
-        void this.opts.cursorStore?.set(this.cursor);
+        this.persistCursor();
         this.opts.onEvent?.({ event: msg.event, id: msg.id, payload: msg.payload });
       } else if (msg.type === 'resume_done') {
         this.cursor = Math.max(this.cursor, Number(msg.cursor ?? 0));
-        void this.opts.cursorStore?.set(this.cursor);
+        this.persistCursor();
       } else if (msg.type === 'presence') {
         this.opts.onPresence?.(msg.online === true);
       } else if (msg.type === 'heartbeat_ack') {
@@ -213,7 +217,7 @@ export class RelayClient {
       }
     });
 
-    ws.on('close', () => this.scheduleReconnect());
+    ws.on('close', () => { if (this.ws === ws) this.scheduleReconnect(); });
     ws.on('error', (e) => this.log('warn', `ws error: ${(e as Error).message}`));
   }
 
@@ -223,7 +227,8 @@ export class RelayClient {
     if (this.closed) return;
     const delay = backoffDelay(this.attempt, this.maxBackoffMs);
     this.log('warn', `ws closed; reconnect in ${delay}ms`);
-    setTimeout(() => this.connect(), delay);
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(() => { if (!this.closed) this.connect(); }, delay);
     this.attempt++;
   }
 
@@ -239,12 +244,20 @@ export class RelayClient {
     this.heartbeat = setInterval(beat, this.heartbeatMs);
   }
 
+  private persistCursor(): void {
+    try {
+      const pending = this.opts.cursorStore?.set(this.cursor);
+      if (pending) void pending.catch(() => this.log('warn', 'event cursor persistence failed'));
+    } catch { this.log('warn', 'event cursor persistence failed'); }
+  }
+
   private send(obj: unknown): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(obj));
   }
 
   close(): void {
     this.closed = true;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.heartbeat) clearInterval(this.heartbeat);
     this.ws?.close();
   }

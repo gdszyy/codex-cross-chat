@@ -4,6 +4,7 @@
  * Authority: docs/mechanism-design.md v1.1 (§2 roster, §3 bootstrap,
  * §4 discovery, §5 message semantics, §5.3 anti-loop, §6 permissions, §9 endpoints).
  */
+import { randomUUID } from 'node:crypto';
 import type { Db } from './db.js';
 import { loadConfig, setConfigValue } from './db.js';
 import {
@@ -329,6 +330,76 @@ export class Store {
       await this.db.query('UPDATE roster SET roster_status=$2 WHERE conv_id=$1', [convId, status]);
     }
     return (await this.getRoster(row.conv_id))!;
+  }
+
+  /** Explicit recovery only: caller must stop the old bridge before replacing its
+   * missing local thread. The public conversation address and its grants stay intact.
+   */
+  async rebindRoster(deviceId: string, convId: string, input: unknown) {
+    if (!/^[A-Za-z0-9-]{1,128}$/.test(convId)) throw bad('bad_rebind_field', 'invalid conversation id');
+    if (!input || typeof input !== 'object' || Array.isArray(input))
+      throw bad('bad_rebind_field', 'object body required');
+    const intent = input as Record<string, unknown>;
+    const fields = ['expected_thread_id', 'profile', 'thread_id', 'reason'];
+    if (Object.keys(intent).some((key) => !fields.includes(key)))
+      throw bad('bad_rebind_field', 'unexpected rebind field');
+    for (const key of ['expected_thread_id', 'profile', 'thread_id']) {
+      const value = intent[key];
+      const max = key === 'profile' ? 128 : 256;
+      if (typeof value !== 'string' || !value || value.length > max || value.trim() !== value || /[\u0000-\u001f\u007f]/.test(value))
+        throw bad('bad_rebind_field', `${key} must be a non-empty string up to ${max} characters without control characters`);
+    }
+    if (intent.reason !== 'lost_local_thread')
+      throw bad('bad_rebind_field', 'reason must be lost_local_thread');
+    const expected = intent.expected_thread_id as string;
+    const profile = intent.profile as string;
+    const threadId = intent.thread_id as string;
+    try {
+      return await this.db.transaction(async (db) => {
+        const tx = new Store(db, this.cfg);
+        const [device] = await db.query('SELECT device_id FROM devices WHERE device_id=$1 AND revoked_at IS NULL FOR SHARE', [deviceId]);
+        if (!device) throw unauth('device revoked');
+        // Do not lock request rows: authorizeStart already locks request -> roster.
+        // Its roster SHARE lock orders the grant before/after this UPDATE lock;
+        // reading in-flight state afterwards avoids the reverse lock-order deadlock.
+        const [raw] = await db.query('SELECT * FROM roster WHERE conv_id=$1 FOR UPDATE', [convId]);
+        if (!raw) throw notFound('conv_not_found', 'no such conversation');
+        const row = mapRoster(raw);
+        if (row.device_id !== deviceId) throw forbidden('not_yours', 'conversation not bound to this device');
+        if (row.roster_status !== 'active' || row.tier !== 't1_managed')
+          throw forbidden('rebind_unavailable', 'only an active managed conversation can be rebound');
+        const [prior] = await db.query(`SELECT rebind_id,rebound_at FROM roster_rebindings
+          WHERE conv_id=$1 AND device_id=$2 AND old_thread_id=$3 AND new_profile=$4
+            AND new_thread_id=$5 AND reason='lost_local_thread' ORDER BY rebound_at DESC LIMIT 1`,
+          [convId, deviceId, expected, profile, threadId]);
+        if (row.profile === profile && row.thread_id === threadId && prior) {
+          return { conversation: row, rebind_id: prior.rebind_id, rebound_at: Number(prior.rebound_at), idempotent: true };
+        }
+        if (row.thread_id !== expected)
+          throw conflict('rebind_stale_binding', 'expected thread no longer matches; inspect the current binding and original intent');
+        if (row.profile === profile && row.thread_id === threadId)
+          throw conflict('rebind_no_change', 'the requested binding is unchanged and has no matching recovery audit');
+        const active = await db.query(`SELECT request_id FROM requests WHERE (from_conv=$1 OR to_conv=$1)
+          AND exec_status IN ('running','waiting_user','result_pending_verify') LIMIT 1`, [convId]);
+        if (active.length) throw conflict('conversation_inflight', 'conversation has in-flight work; resolve it before rebinding');
+        const occupied = await db.query(`SELECT conv_id FROM roster WHERE device_id=$1 AND profile=$2
+          AND thread_id=$3 AND conv_id<>$4`, [deviceId, profile, threadId, convId]);
+        if (occupied.length) throw conflict('binding_occupied', 'target thread is already bound to another conversation');
+        const rebind_id = 'rb-' + randomUUID();
+        const rebound_at = nowMs();
+        await db.query(`UPDATE roster SET profile=$2,thread_id=$3 WHERE conv_id=$1 AND thread_id=$4`,
+          [convId, profile, threadId, expected]);
+        await db.query(`INSERT INTO roster_rebindings(rebind_id,conv_id,device_id,old_profile,old_thread_id,
+          new_profile,new_thread_id,reason,rebound_at) VALUES($1,$2,$3,$4,$5,$6,$7,'lost_local_thread',$8)`,
+          [rebind_id, convId, deviceId, row.profile, row.thread_id, profile, threadId, rebound_at]);
+        return { conversation: await tx.getRosterOrThrow(convId), rebind_id, rebound_at, idempotent: false };
+      });
+    } catch (error) {
+      // A concurrent normal registration may occupy a previously absent binding.
+      if ((error as any)?.code === '23505' && (error as any)?.constraint === 'roster_binding')
+        throw conflict('binding_occupied', 'target thread is already bound to another conversation');
+      throw error;
+    }
   }
 
   async listRoster(filter: {

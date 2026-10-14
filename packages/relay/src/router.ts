@@ -259,6 +259,13 @@ export async function handleHttp(
     return ok(res, await store.setRosterStatus(decodeURIComponent(m[1]), body.status));
   }
 
+  // Explicit device-owned recovery; never allocate a different conversation address.
+  const rebindMatch = path.match(/^\/v1\/roster\/([^/]+)\/rebind$/);
+  if (method === 'POST' && rebindMatch) {
+    const deviceId = await requireDevice();
+    return ok(res, await store.rebindRoster(deviceId, decodeURIComponent(rebindMatch[1]), await readBody(req)));
+  }
+
   // 4. POST /v1/roster/register  (self-registration; §3.1)
   if (method === 'POST' && path === '/v1/roster/register') {
     const deviceId = await requireDevice();

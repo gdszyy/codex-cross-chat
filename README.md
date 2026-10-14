@@ -131,3 +131,5 @@ relay 入口默认监听 `0.0.0.0:8788`（容器托管用）；**本地只回环
 - 唯一手工环境变量＝连接密钥；其余参数全为数据库配置项带默认值。
 - 首版只接 **T1 桥接自建对话**；既有 paginated 桌面对话（T2）在当前栈上不支持自动接入
   （见 `docs/m1-compat-report.md` §6.1 与对账表 C1）。
+
+空线程重启后报 `thread not found` / `no rollout found`：先读 [线程恢复](docs/thread-recovery.md)；本次真实失败记录见 [物理联机问题](docs/physical-link-incident.md)。保留原配置和凭证，不重新配对。

@@ -45,6 +45,7 @@ export class CodexClient extends EventEmitter {
       env: { ...process.env, ...(this.opts.env ?? {}) },
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: this.opts.shell === true,
+      windowsHide: true,
     }) as ChildProcessWithoutNullStreams;
     const rl = readline.createInterface({ input: this.child.stdout });
     rl.on('line', (line) => this.onLine(line));
@@ -52,13 +53,15 @@ export class CodexClient extends EventEmitter {
     // Never let a stdin write error (e.g. after the child exits) crash the
     // process as an unhandled stream error.
     this.child.stdin.on('error', (e: Error) => this.emit('stdinError', e.message));
+    this.child.on('error', () => {
+      this.initialized = false;
+      this.rejectPending(new Error('codex process could not start'));
+      this.emit('transportError', 'codex process could not start');
+    });
     this.child.on('exit', (code) => {
+      this.initialized = false;
       this.emit('exit', code);
-      for (const p of this.pending.values()) {
-        clearTimeout(p.timer);
-        p.reject(new Error(`codex process exited (${code})`));
-      }
-      this.pending.clear();
+      this.rejectPending(new Error(`codex process exited (${code})`));
     });
     await this.rpc(
       'initialize',
@@ -71,6 +74,14 @@ export class CodexClient extends EventEmitter {
     );
     this.send({ method: 'initialized' });
     this.initialized = true;
+  }
+
+  private rejectPending(error: Error): void {
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timer);
+      p.reject(error);
+    }
+    this.pending.clear();
   }
 
   private send(obj: any): void {
@@ -105,7 +116,8 @@ export class CodexClient extends EventEmitter {
       // Server -> client request. The bridge never auto-approves on behalf of
       // the user (§4 step 5); deny by responding with an explicit refusal.
       this.emit('serverRequest', msg);
-      this.send({ id: msg.id, result: { approved: false, reason: 'relay bridge does not auto-approve' } });
+      try { this.send({ id: msg.id, result: { approved: false, reason: 'relay bridge does not auto-approve' } }); }
+      catch { this.emit('transportError', 'codex exited before approval refusal could be delivered'); }
       return;
     }
     if (msg.method) this.emit('notification', msg);
@@ -119,18 +131,51 @@ export class CodexClient extends EventEmitter {
         reject(new Error(`rpc timeout: ${method}`));
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
-      this.send({ id, method, params });
+      try { this.send({ id, method, params }); }
+      catch (e) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(e as Error);
+      }
     });
   }
 
-  async threadStart(model: string, cwd?: string): Promise<string> {
+  async threadStart(model: string, cwd?: string, name = 'Relay managed conversation'): Promise<string> {
     const res = await this.rpc('thread/start', {
       cwd: cwd ?? this.opts.cwd,
       sandbox: 'read-only',
       ephemeral: false,
       model,
     });
-    return res.thread.id;
+    const id = res.thread?.id;
+    if (typeof id !== 'string' || !id) throw new Error('thread/start did not return a thread id');
+    // CLI 0.149.0 can return a path for an empty legacy thread before its
+    // rollout exists. A real zero-turn, cross-process probe confirms that
+    // thread/name/set persists it without spending a model turn. Do this
+    // BEFORE publishing the thread's relay binding, never synthesize history.
+    await this.rpc('thread/name/set', { threadId: id, name });
+    await this.verifyManagedThread(id);
+    return id;
+  }
+
+  /** Resume the exact stored T1 thread; never create/fork a replacement. */
+  async threadResume(threadId: string): Promise<any> {
+    const res = await this.rpc('thread/resume', { threadId });
+    this.assertManagedThread(threadId, res.thread);
+    return this.verifyManagedThread(threadId);
+  }
+
+  private assertManagedThread(threadId: string, thread: any): void {
+    if (thread?.id !== threadId || thread.ephemeral === true || thread.historyMode !== 'legacy') {
+      throw new Error(`managed thread recovery rejected for ${threadId}: expected the same durable legacy thread`);
+    }
+  }
+
+  private async verifyManagedThread(threadId: string): Promise<any> {
+    const thread = await this.threadRead(threadId, true);
+    this.assertManagedThread(threadId, thread);
+    if (!Array.isArray(thread.turns)) throw new Error(`managed thread history unavailable for ${threadId}`);
+    return thread;
   }
 
   async threadRead(threadId: string, includeTurns = true): Promise<any> {
@@ -163,7 +208,7 @@ export class CodexClient extends EventEmitter {
   }
 
   get isRunning(): boolean {
-    return this.child !== undefined && this.child.exitCode === null;
+    return this.initialized && this.child !== undefined && this.child.exitCode === null && this.child.signalCode === null;
   }
 
   async close(): Promise<void> {

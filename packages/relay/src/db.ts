@@ -55,6 +55,20 @@ CREATE TABLE IF NOT EXISTS roster (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS roster_binding ON roster(device_id, profile, thread_id);
 
+CREATE TABLE IF NOT EXISTS roster_rebindings (
+  rebind_id TEXT PRIMARY KEY,
+  conv_id TEXT NOT NULL REFERENCES roster(conv_id),
+  device_id TEXT NOT NULL REFERENCES devices(device_id),
+  old_profile TEXT NOT NULL,
+  old_thread_id TEXT NOT NULL,
+  new_profile TEXT NOT NULL,
+  new_thread_id TEXT NOT NULL,
+  reason TEXT NOT NULL CHECK (reason = 'lost_local_thread'),
+  rebound_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS roster_rebindings_intent ON roster_rebindings
+  (conv_id, device_id, old_thread_id, new_profile, new_thread_id);
+
 CREATE TABLE IF NOT EXISTS requests (
   request_id TEXT PRIMARY KEY,
   root_request_id TEXT NOT NULL,
