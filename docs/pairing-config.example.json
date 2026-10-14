@@ -1,0 +1,13 @@
+{
+  "relay_url": "https://codex-cross-chat-production.up.railway.app",
+  "profile": "default",
+  "state_dir": "./state",
+  "heartbeat_ms": 30000,
+  "bindings": [],
+  "pairing": {
+    "alias": "device-b-worker",
+    "role": "worker",
+    "task": "Handle requests from the paired conversation",
+    "owner_label": "device-b"
+  }
+}

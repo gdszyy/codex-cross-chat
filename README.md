@@ -1,9 +1,9 @@
-# codex-relay — Codex 跨设备对话通信（M2 实现）
+# codex-relay — Codex 跨设备对话通信
 
 把不同设备上的指定 Codex 对话连起来：互相派任务、查进度、回传结果。
 架构＝**Railway 消息中转服务 ＋ 每台设备的本地桥接程序 ＋ Codex 通信工具**（方案正本 `docs/plan-v1.md`）。
 
-> 设计权威：`docs/mechanism-design.md` v1.1。本仓实现严格按它的接口表（§9 十八接口）、
+> 设计权威：`docs/mechanism-design.md`（v1.2 配对增补见 `docs/pairing.md`）。旧接口继续按原接口表、
 > 三层状态（§5.2）、去重与启动窗口（§5.3）、链上限（§5.4）、权限与 64KB（§6）、运行参数（§7.2）。
 > 对账表：`docs/m2-reconciliation.md`。**接入一个 Codex 对话**：见 `docs/access-guide.md`。
 
@@ -18,6 +18,10 @@
 
 ## 快速开始
 
+**新设备推荐使用一次性配对**：A 已启动 Bridge 并有稳定 `conv_id` 后，主动调用 `relay_pair_invite` 生成十分钟一次性码；B 用该码启动 Bridge，一次兑换获得独立设备凭证、对话地址和双向权限。双方无需交换长期凭证。操作见 [新设备交接](docs/handover/HANDOVER-deviceB.md)，机制见 [配对指南](docs/pairing.md)。公布对话不会自动生成邀请码。
+
+以下根密钥注册用于首台设备/Owner 管理引导，或兼容既有接入：
+
 ```bash
 pnpm install
 
@@ -31,8 +35,8 @@ curl -s -X POST http://127.0.0.1:8788/v1/devices/register \
   -d '{"owner_label":"owner"}'
 
 # 3) 起桥接（把上一步的 device_token 填进配置）
-cp docs/bridge-config.example.json bridge.config.json
-pnpm --filter @relay/bridge start -- --config ../../../bridge.config.json
+cp docs/bridge-config.example.json <仓库外的配置路径>
+node --import tsx packages/bridge/src/index.ts --config <仓库外的配置路径>
 ```
 
 ### 桥接的启动形态（平台差异）
@@ -70,7 +74,7 @@ npx tsx scripts/dual-instance.ts --only=rev      # 只跑反向
 
 ## 部署（Railway）
 
-> **本仓目前只到"部署就绪"，不执行部署**——以下步骤由 Owner 复核后自行执行；本机未注册任何外部服务。
+> 现有生产服务为 `https://codex-cross-chat-production.up.railway.app`，使用持久 PostgreSQL。以下为部署与核验方法；正式发布须有用户授权。
 
 1. **建服务**：Railway → New Project → **Deploy from GitHub repo** → 选本仓对应分支。**服务根＝仓根**：仓根有 `Dockerfile`（`node:22-bookworm-slim` ＋ corepack 启用 pnpm 10.33.0 ＋ `pnpm install --frozen-lockfile`（含 devDeps，生产用 tsx 跑 TS）＋ `CMD ["pnpm","--filter","@relay/relay","start"]`），Railway 检出到 Dockerfile 即**自动用它构建**（官方原文见 `docs/m1-platform-research.md` §1.4）；配套 `.dockerignore` 排除 `node_modules`/`.git`/`.tmp` 等，避免把本机安装带进镜像。若构建器未走 Dockerfile，兜底＝根 `package.json` 的 `start` 脚本（同一条命令）。推送新提交会自动重建部署。
 2. **加数据库**：同项目内 **Add → PostgreSQL**。数据库**默认私有**，同项目服务经 private network 可达（§1.3）。

@@ -34,7 +34,11 @@ export interface Binding {
 
 export interface BridgeOptions {
   relayUrl: string;
-  deviceToken: string;
+  deviceToken?: string;
+  pairing?: { code: string; alias: string; role: string; task: string; ownerLabel?: string };
+  /** Must atomically persist the credential + full binding before any WS opens. */
+  persistPairing?: (receipt: PairingReceipt) => Promise<void>;
+  preparePairing?: () => Promise<void>;
   profile: string;
   codexCommand: string;
   codexArgs: string[];
@@ -48,6 +52,14 @@ export interface BridgeOptions {
   onLog?: (level: string, message: string) => void;
   heartbeatMs?: number;
   maxBackoffMs?: number;
+}
+
+export interface PairingReceipt {
+  device_id: string;
+  device_token: string;
+  binding: Binding;
+  pairing_id: string;
+  peer_conv_id: string;
 }
 
 export class Bridge {
@@ -99,6 +111,9 @@ export class Bridge {
         this.log('warn', `configured model ${this.opts.model} is not in model/list`);
       }
     }
+
+    if (this.opts.pairing) await this.bootstrapPairing();
+    if (!this.opts.deviceToken) throw new Error('device credential required; use pairing bootstrap');
 
     this.relay = new RelayClient({
       baseUrl: this.opts.relayUrl,
@@ -169,9 +184,18 @@ export class Bridge {
     if (!b.threadId && existing?.thread_id) b.threadId = existing.thread_id;
     if (!b.threadId) {
       b.threadId = await this.codex.threadStart(this.opts.model, this.opts.cwd);
+      // Keep the stable local thread even if registration fails or the process
+      // stops. Never start another thread just because the relay was offline.
+      await this.state.saveBinding(b.alias, this.opts.profile, b.threadId);
       this.log('info', `created thread for ${b.alias}: ${b.threadId}`);
     }
     this.byAlias.set(b.alias, b);
+
+    let current: any;
+    try { current = await this.relay.me({ profile: this.opts.profile, thread_id: b.threadId }); }
+    catch (e) { if ((e as any).code !== 'unbound') throw e; }
+    if (!current?.conv_id) current = undefined;
+    if (current && current.project !== b.project) throw new Error('existing conversation project differs from config; registration paused');
 
     // Register (idempotent on the relay: same device+profile+thread → same conv).
     const row = await this.relay.registerRoster({
@@ -183,12 +207,55 @@ export class Bridge {
       project: b.project,
       owner_label: b.ownerLabel ?? 'owner',
       tier: 't1_managed',
-      ...(this.opts.allowSources ? { allow_sources: this.opts.allowSources } : {}),
+      ...(this.opts.allowSources !== undefined ? { allow_sources: this.opts.allowSources }
+        : current ? { allow_sources: current.allow_sources } : {}),
     });
     b.convId = row.conv_id;
     this.byConv.set(row.conv_id, b);
     await this.state.saveBinding(b.alias, this.opts.profile, b.threadId, row.conv_id);
     this.log('info', `${b.alias} registered as ${row.conv_id}`);
+  }
+
+  private async bootstrapPairing(): Promise<void> {
+    const p = this.opts.pairing!;
+    if (!this.opts.persistPairing) throw new Error('pairing requires durable config persistence');
+    await this.opts.preparePairing?.();
+    let receipt = await this.state.getBootstrap(p.alias);
+    if (receipt?.status === 'redeemed') {
+      throw new Error('pairing already redeemed; restart using the saved config without a pairing code');
+    }
+    if (receipt && receipt.status !== 'ready') {
+      throw new Error('pairing outcome unknown; inspect saved config/relay before retrying (no automatic redemption)');
+    }
+    if (!receipt) {
+      await this.state.saveBootstrap(p.alias, { status: 'creating_thread' });
+      const threadId = await this.codex.threadStart(this.opts.model, this.opts.cwd);
+      await this.state.saveBinding(p.alias, this.opts.profile, threadId);
+      receipt = { status: 'ready', thread_id: threadId };
+      await this.state.saveBootstrap(p.alias, receipt);
+    }
+    // Write intent BEFORE making a one-shot request. A timeout/crash can mean
+    // the invitation was consumed: startup must not issue another request.
+    await this.state.saveBootstrap(p.alias, { ...receipt, status: 'redeeming' });
+    const client = new RelayClient({ baseUrl: this.opts.relayUrl, deviceToken: this.opts.deviceToken });
+    const result = await client.redeem({ code: p.code, profile: this.opts.profile, thread_id: receipt.thread_id,
+      alias: p.alias, role: p.role, task: p.task, ...(p.ownerLabel ? { owner_label: p.ownerLabel } : {}) });
+    const token = result.device?.device_token ?? this.opts.deviceToken;
+    const row = result.conversation;
+    if (!token || !result.device?.device_id || !row?.conv_id || !row.project || !result.pairing_id || !result.peer_conv_id) {
+      throw new Error('pairing response incomplete; outcome unknown, automatic retry disabled');
+    }
+    const b: Binding = { alias: p.alias, role: p.role, task: p.task, ownerLabel: p.ownerLabel,
+      project: row.project, threadId: receipt.thread_id, convId: row.conv_id };
+    await this.opts.persistPairing({ device_id: result.device.device_id, device_token: token, binding: b,
+      pairing_id: result.pairing_id, peer_conv_id: result.peer_conv_id });
+    await this.state.saveBinding(b.alias, this.opts.profile, b.threadId!, b.convId);
+    await this.state.saveBootstrap(p.alias, { status: 'redeemed', thread_id: b.threadId, conv_id: b.convId,
+      pairing_id: result.pairing_id, peer_conv_id: result.peer_conv_id });
+    this.opts.deviceToken = token;
+    this.opts.bindings = [...this.opts.bindings.filter((x) => x.alias !== b.alias), b];
+    this.opts.pairing = undefined;
+    this.log('info', `paired ${b.convId} with ${result.peer_conv_id}`);
   }
 
   /** Register a T1 conversation after its thread already exists. */
@@ -262,7 +329,7 @@ export class Bridge {
 
   private async processRequestInner(requestId: string): Promise<void> {
     const rec = await this.state.get(requestId);
-    if (rec && ['running', 'completed', 'interrupted', 'result_pending_verify'].includes(rec.status)) {
+    if (rec && ['running', 'completed', 'interrupted', 'result_pending_verify', 'abandoned'].includes(rec.status)) {
       this.log('info', `dedupe: ${requestId} already ${rec.status}`);
       return;
     }
@@ -296,6 +363,16 @@ export class Bridge {
     }
 
     const text = `[[${marker}]]\n${request.type} from ${request.from_conv}\n\n${request.body}`;
+    try {
+      // Claim is only a receipt. Acquire the current ACL-backed launch permit
+      // before spending a local model turn; unpair between claim and here
+      // must prevent execution. A successful permit is durable/in-flight.
+      await this.relay.authorizeStart(requestId);
+    } catch {
+      await this.state.finish(requestId, 'abandoned');
+      this.log('warn', `launch not authorized for ${requestId}; no local turn started`);
+      return;
+    }
     let turnId: string;
     try {
       turnId = await this.codex.turnStart(binding.threadId, text, this.opts.model);

@@ -8,6 +8,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { RelayClient } from '../src/relayClient.js';
 import { registerDevice, rfetch, sleep, startRelay, type TestEnv } from './helpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -132,7 +133,30 @@ async function connectMcp(env: TestEnv, deviceToken: string, convId: string, thr
 }
 
 describe('relay MCP tool server', () => {
-  it('initializes, lists the nine tools and answers relay_whoami', async () => {
+  it('pairing controls use runtime conversation even if model arguments spoof identity', async () => {
+    const { env, dev, convId } = await setup();
+    const client = await connectMcp(env, dev.device_token, convId, 'th-mcp');
+    const call = async (name: string, args = {}) => {
+      const reply = await client.call('tools/call', { name, arguments: args });
+      expect(reply.result.isError).not.toBe(true);
+      return JSON.parse(reply.result.content[0].text);
+    };
+    const invite = await call('relay_pair_invite', { conv_id: 'c-untrusted' });
+    expect(invite.inviter_conv_id).toBe(convId);
+    await call('relay_pair_revoke', { invitation_id: invite.invitation_id, conv_id: 'c-untrusted' });
+    const publicClient = new RelayClient({ baseUrl: env.baseUrl });
+    await expect(publicClient.redeem({ code: invite.code, profile: 'default', thread_id: 'unused',
+      alias: 'peer', role: 'worker', task: 'receive' })).rejects.toThrow('pairing_code_unavailable');
+    const fresh = await call('relay_pair_invite');
+    const redeemed = await publicClient.redeem({ code: fresh.code, profile: 'default', thread_id: 'peer-thread',
+      alias: 'peer', role: 'worker', task: 'receive' });
+    const pairs = await call('relay_pair_list', { conv_id: 'c-untrusted' });
+    expect(pairs[0].pairing_id).toBe(redeemed.pairing_id);
+    await call('relay_pair_unpair', { pairing_id: redeemed.pairing_id, conv_id: 'c-untrusted' });
+    expect((await call('relay_pair_list'))[0].revoked_at).not.toBeNull();
+  });
+
+  it('initializes, lists tools including pairing controls and answers relay_whoami', async () => {
     const { env, dev, convId } = await setup();
     const client = await connectMcp(env, dev.device_token, convId, 'th-mcp');
 
@@ -144,6 +168,10 @@ describe('relay MCP tool server', () => {
         'relay_discover',
         'relay_inbox',
         'relay_join',
+        'relay_pair_invite',
+        'relay_pair_revoke',
+        'relay_pair_list',
+        'relay_pair_unpair',
         'relay_read',
         'relay_register',
         'relay_send',

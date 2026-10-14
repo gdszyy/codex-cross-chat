@@ -3,7 +3,8 @@
  * put a short-circuited variant back in and assert the same probe turns red.
  * If a guard were ever removed or bypassed, these probes would flip.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Store } from '../src/domain.js';
 import { api, registerConv, registerDevice, startTestRelay, type TestRelay } from './helpers.js';
 
 let current: TestRelay | undefined;
@@ -74,8 +75,40 @@ describe('reverse assertion: source permission', () => {
     // default allow_sources = ["owner"] ⇒ denied
     expect((await send(t, dev.device_token, { from_conv: a.conv_id, to: b.conv_id, type: 'TASK', body: 'x' })).status).toBe(403);
 
-    (t.relay.store as any).assertCanSend = () => {}; // MUTANT: guard becomes a no-op
-    expect((await send(t, dev.device_token, { from_conv: a.conv_id, to: b.conv_id, type: 'TASK', body: 'x' })).status).toBe(201);
+    // Transaction-scoped stores use the same guard on the prototype.
+    const guard = vi.spyOn(Store.prototype as any, 'assertCanSend').mockImplementation(async () => {});
+    try {
+      expect((await send(t, dev.device_token, { from_conv: a.conv_id, to: b.conv_id, type: 'TASK', body: 'x' })).status).toBe(201);
+    } finally {
+      guard.mockRestore();
+    }
+  });
+});
+
+describe('reverse assertion: authorization before local spending', () => {
+  it('detects a missing current ACL guard when an already-claimed request is unpaired', async () => {
+    const t = await setup();
+    const dev = await registerDevice(t);
+    const a = await registerConv(t, dev.device_token, { thread_id: 'a', alias: 'A', role: 'worker' });
+    const invitation = await api(t.baseUrl, 'POST', '/v1/pairing/invitations', { token: dev.device_token, body: { conv_id: a.conv_id } });
+    const redeemed = await api(t.baseUrl, 'POST', '/v1/pairing/redeem', { body: {
+      code: invitation.body.data.code, profile: 'default', thread_id: 'b', alias: 'B', role: 'worker', task: 'work',
+    } });
+    const b = redeemed.body.data;
+    const sent = await send(t, dev.device_token, { from_conv: a.conv_id, to: b.conversation.conv_id, type: 'TASK', body: 'must not spend' });
+    const id = sent.body.data.request_id;
+    await api(t.baseUrl, 'POST', `/v1/requests/${id}/claim`, { token: b.device.device_token });
+    await api(t.baseUrl, 'POST', `/v1/pairings/${b.pairing_id}/revoke`, { token: dev.device_token, body: { conv_id: a.conv_id } });
+    expect((await api(t.baseUrl, 'POST', `/v1/requests/${id}/authorize-start`, { token: b.device.device_token })).status).toBe(403);
+    expect((await t.relay.store.getRequestOrThrow(id)).start_authorized_at).toBeNull();
+    const guard = vi.spyOn(Store.prototype as any, 'assertCanSend').mockImplementation(async () => {});
+    try {
+      // Deliberately remove the guard: the exact same probe must now turn green.
+      expect((await api(t.baseUrl, 'POST', `/v1/requests/${id}/authorize-start`, { token: b.device.device_token })).status).toBe(200);
+      expect((await t.relay.store.getRequestOrThrow(id)).start_authorized_at).toBeGreaterThan(0);
+    } finally {
+      guard.mockRestore();
+    }
   });
 });
 

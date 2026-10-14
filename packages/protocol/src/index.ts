@@ -135,6 +135,8 @@ export interface RequestRow {
   created_at: number;
   claimed_at: number | null;
   started_at: number | null;
+  /** Relay grants execution before the Bridge invokes a model; not a model turn id. */
+  start_authorized_at?: number | null;
   completed_at: number | null;
   delivered_at: number | null;
   returned_at: number | null;

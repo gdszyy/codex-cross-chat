@@ -12,6 +12,23 @@ import { HttpError, bad, forbidden, unauth } from './util.js';
 
 const MAX_HTTP_BODY = 1024 * 1024;
 
+// Bounded, per-process admission limits. Use the socket address, never client-supplied
+// forwarded headers. A reverse proxy may share a bucket; distributed limits belong at ingress.
+const pairingAttempts = new WeakMap<Store, Map<string, { start: number; count: number }>>();
+function limitPairing(store: Store, req: IncomingMessage) {
+  let buckets = pairingAttempts.get(store);
+  if (!buckets) pairingAttempts.set(store, buckets = new Map());
+  const now = Date.now();
+  for (const [key, bucket] of buckets) if (now - bucket.start >= 60_000) buckets.delete(key);
+  const key = req.socket.remoteAddress ?? 'unknown';
+  let bucket = buckets.get(key);
+  if (!bucket) {
+    if (buckets.size >= 4096) throw new HttpError(429, 'pairing_rate_limit', 'pairing temporarily busy');
+    buckets.set(key, bucket = { start: now, count: 0 });
+  }
+  if (++bucket.count > 30) throw new HttpError(429, 'pairing_rate_limit', 'too many pairing attempts; retry in a minute');
+}
+
 async function readBody(req: IncomingMessage): Promise<any> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -115,6 +132,40 @@ export async function handleHttp(
     const { device_id } = await store.authDevice(token);
     return device_id;
   };
+
+  if (method === 'POST' && path === '/v1/pairing/redeem') {
+    limitPairing(store, req);
+    const body = await readBody(req);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw bad('bad_pairing_field', 'object body required');
+    return ok(res, await store.redeemPairing(body, bearer(req)), 201);
+  }
+  if (method === 'POST' && path === '/v1/pairing/invitations') {
+    const deviceId = await requireDevice();
+    limitPairing(store, req);
+    const body = await readBody(req);
+    if (typeof body?.conv_id !== 'string') throw bad('binding_required', 'conv_id required');
+    return ok(res, await store.createPairingInvitation(deviceId, body.conv_id), 201);
+  }
+  const invitationMatch = path.match(/^\/v1\/pairing\/invitations\/([^/]+)\/revoke$/);
+  if (method === 'POST' && invitationMatch) {
+    const deviceId = await requireDevice();
+    const body = await readBody(req);
+    if (typeof body?.conv_id !== 'string') throw bad('binding_required', 'conv_id required');
+    return ok(res, await store.revokePairingInvitation(deviceId, body.conv_id, decodeURIComponent(invitationMatch[1])));
+  }
+  if (method === 'GET' && path === '/v1/pairings') {
+    const deviceId = await requireDevice();
+    const convId = url.searchParams.get('conv_id');
+    if (!convId) throw bad('binding_required', 'conv_id required');
+    return ok(res, await store.listPairings(deviceId, convId));
+  }
+  const pairingMatch = path.match(/^\/v1\/pairings\/([^/]+)\/revoke$/);
+  if (method === 'POST' && pairingMatch) {
+    const deviceId = await requireDevice();
+    const body = await readBody(req);
+    if (typeof body?.conv_id !== 'string') throw bad('binding_required', 'conv_id required');
+    return ok(res, await store.revokePairing(deviceId, body.conv_id, decodeURIComponent(pairingMatch[1])));
+  }
 
   // 1. POST /v1/devices/register
   if (method === 'POST' && path === '/v1/devices/register') {
@@ -415,6 +466,13 @@ export async function handleHttp(
   }
 
   // bridge control: start (turnId persisted)
+  m = path.match(/^\/v1\/requests\/([^/]+)\/authorize-start$/);
+  if (method === 'POST' && m) {
+    const deviceId = await requireDevice();
+    return ok(res, await store.authorizeStart(decodeURIComponent(m[1]), deviceId));
+  }
+
+  // Backward-compatible start/report endpoint. New bridges authorize before turnStart.
   m = path.match(/^\/v1\/requests\/([^/]+)\/start$/);
   if (method === 'POST' && m) {
     const deviceId = await requireDevice();
@@ -442,6 +500,7 @@ export async function handleHttp(
       return_status: r.return_status,
       result_missing: r.result_missing,
       turn_id: r.turn_id,
+      start_authorized_at: r.start_authorized_at,
       created_at: r.created_at,
       completed_at: r.completed_at,
       expires_at: r.expires_at,

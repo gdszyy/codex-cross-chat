@@ -194,6 +194,17 @@ export class LocalState {
 
   // ---- kv (event cursor) --------------------------------------------------
 
+  async getBootstrap(alias: string): Promise<any | null> {
+    const rows = await this.db.query<any>('SELECT value FROM kv WHERE key=$1', [`bootstrap:${alias}`]);
+    return rows.length ? JSON.parse(rows[0].value) : null;
+  }
+
+  /** Contains status/thread/receipt ids only. Codes and credentials stay out of DB/log. */
+  async saveBootstrap(alias: string, value: unknown): Promise<void> {
+    await this.db.query('INSERT INTO kv(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2',
+      [`bootstrap:${alias}`, JSON.stringify(value)]);
+  }
+
   /**
    * Persisted WS event cursor. Without this, a bridge restart would forget how
    * far it had consumed and never replay events it missed while offline (the

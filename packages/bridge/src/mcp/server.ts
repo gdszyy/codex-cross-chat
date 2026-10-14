@@ -33,6 +33,11 @@ const deviceToken = process.env.RELAY_DEVICE_TOKEN ?? '';
 
 const relay = new RelayClient({ baseUrl: relayUrl, deviceToken });
 const binding = { conv_id: convId || undefined, profile, thread_id: threadId || undefined };
+async function exactConv(): Promise<string> {
+  const row = await relay.me(binding);
+  if (!row?.conv_id || (convId && row.conv_id !== convId)) throw new Error('runtime conversation binding unavailable');
+  return row.conv_id;
+}
 
 interface ToolDef {
   name: string;
@@ -44,6 +49,30 @@ interface ToolDef {
 const str = (description: string, required = false) => ({ type: 'string', description, ...(required ? {} : {}) });
 
 const TOOLS: ToolDef[] = [
+  {
+    name: 'relay_pair_invite',
+    description: 'Explicitly create a single-use pairing invitation for this conversation (expires in ten minutes). Share its code only with the intended peer.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    handler: async () => relay.invite(await exactConv()),
+  },
+  {
+    name: 'relay_pair_revoke',
+    description: 'Revoke an unredeemed invitation issued by this conversation.',
+    inputSchema: { type: 'object', properties: { invitation_id: str('invitation id') }, required: ['invitation_id'], additionalProperties: false },
+    handler: async (a) => relay.revokeInvitation(await exactConv(), a.invitation_id),
+  },
+  {
+    name: 'relay_pair_list',
+    description: 'List pairings for this exact runtime conversation.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    handler: async () => relay.pairings(await exactConv()),
+  },
+  {
+    name: 'relay_pair_unpair',
+    description: 'End one pairing involving this conversation. Independent manual permissions remain unchanged.',
+    inputSchema: { type: 'object', properties: { pairing_id: str('pairing id') }, required: ['pairing_id'], additionalProperties: false },
+    handler: async (a) => relay.unpair(await exactConv(), a.pairing_id),
+  },
   {
     name: 'relay_whoami',
     description: 'Return my identity (conv_id + roster row). Use after losing context.',
@@ -74,7 +103,8 @@ const TOOLS: ToolDef[] = [
       },
       required: ['alias', 'role', 'task', 'project'],
     },
-    handler: async (a) => relay.registerRoster({ ...a, profile, thread_id: threadId, tier: 't1_managed' }),
+    handler: async (a) => relay.registerRoster({ alias: a.alias, role: a.role, task: a.task, project: a.project,
+      ...(a.task_ref ? { task_ref: a.task_ref } : {}), profile, thread_id: threadId, tier: 't1_managed' }),
   },
   {
     name: 'relay_join',
@@ -98,7 +128,7 @@ const TOOLS: ToolDef[] = [
       },
       required: ['to', 'type', 'body'],
     },
-    handler: async (a) => relay.sendRequest({ ...a, from_conv: convId }),
+    handler: async (a) => relay.sendRequest({ ...a, from_conv: await exactConv() }),
   },
   {
     name: 'relay_status',
@@ -116,13 +146,13 @@ const TOOLS: ToolDef[] = [
     name: 'relay_cancel',
     description: 'Request cancellation of a request I originated.',
     inputSchema: { type: 'object', properties: { request_id: str('request id', true) }, required: ['request_id'] },
-    handler: async (a) => relay.cancel({ request_id: a.request_id, from_conv: convId }),
+    handler: async (a) => relay.cancel({ request_id: a.request_id, from_conv: await exactConv() }),
   },
   {
     name: 'relay_inbox',
     description: 'My inbox: what awaits me, guidance on my running tasks, results to verify, my outbox.',
     inputSchema: { type: 'object', properties: {}, required: [] },
-    handler: async () => relay.inbox(convId || (await relay.me(binding))?.conv_id),
+    handler: async () => relay.inbox(await exactConv()),
   },
 ];
 

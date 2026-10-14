@@ -33,6 +33,10 @@ import {
   newRequestId,
   newResultId,
   newTicket,
+  newPairingCode,
+  pairingCodeHash,
+  newPairingId,
+  newInvitationId,
   notFound,
   nowMs,
   unauth,
@@ -74,7 +78,9 @@ function mapRoster(r: any): RosterRow {
   };
 }
 
-function mapRequest(r: any): RequestRow {
+type StartAuthorizedRequest = RequestRow & { start_authorized_at: number | null };
+
+function mapRequest(r: any): StartAuthorizedRequest {
   return {
     request_id: r.request_id,
     root_request_id: r.root_request_id,
@@ -98,11 +104,12 @@ function mapRequest(r: any): RequestRow {
     created_at: numReq(r.created_at),
     claimed_at: num(r.claimed_at),
     started_at: num(r.started_at),
+    start_authorized_at: num(r.start_authorized_at),
     completed_at: num(r.completed_at),
     delivered_at: num(r.delivered_at),
     returned_at: num(r.returned_at),
     expires_at: numReq(r.expires_at),
-  } as RequestRow;
+  } as StartAuthorizedRequest;
 }
 
 function mapResult(r: any): ResultRow {
@@ -419,6 +426,113 @@ export class Store {
     return jc;
   }
 
+  // Pairing grants are stored separately from the manually maintained ACL.
+  private async ownedConversation(deviceId: string, convId: string) {
+    const row = await this.getRosterOrThrow(convId);
+    if (row.device_id !== deviceId) throw forbidden('not_yours', 'conversation not bound to this device');
+    return row;
+  }
+
+  async createPairingInvitation(deviceId: string, convId: string) {
+    const row = await this.ownedConversation(deviceId, convId);
+    if (row.roster_status !== 'active') throw forbidden('sender_inactive', 'conversation not active');
+    const code = newPairingCode();
+    const invitation_id = newInvitationId();
+    const now = nowMs();
+    const expires_at = now + 600_000;
+    await this.db.query(`INSERT INTO pairing_invitations
+      (invitation_id,code_hash,inviter_conv_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)`,
+      [invitation_id, pairingCodeHash(code), convId, now, expires_at]);
+    return { invitation_id, code, expires_at, inviter_conv_id: convId };
+  }
+
+  async revokePairingInvitation(deviceId: string, convId: string, invitationId: string) {
+    await this.ownedConversation(deviceId, convId);
+    const rows = await this.db.query(`UPDATE pairing_invitations SET revoked_at=COALESCE(revoked_at,$3)
+      WHERE invitation_id=$1 AND inviter_conv_id=$2 RETURNING invitation_id`, [invitationId, convId, nowMs()]);
+    if (!rows.length) throw forbidden('not_inviter', 'invitation does not belong to this conversation');
+    return { revoked: true };
+  }
+
+  async redeemPairing(input: {
+    code: string; profile: string; thread_id: string; alias: string; role: string; task: string;
+    owner_label?: string; tier?: Tier;
+  }, deviceToken?: string) {
+    for (const key of ['code', 'profile', 'thread_id', 'alias', 'role', 'task'] as const) {
+      if (typeof input[key] !== 'string' || (key !== 'task' && !input[key].trim()) || input[key].length > 4096)
+        throw bad('bad_pairing_field', `${key} must be a valid string`);
+    }
+    if (!/^[A-Za-z0-9_-]{32}$/.test(input.code)) throw bad('invalid_pairing_code', 'invalid pairing code');
+    if (input.owner_label !== undefined && (typeof input.owner_label !== 'string' || input.owner_label.length > 256))
+      throw bad('bad_pairing_field', 'owner_label must be a string up to 256 characters');
+    return this.db.transaction(async (db) => {
+      const tx = new Store(db, this.cfg);
+      // Locking this single-use row serializes concurrent redeem/revoke attempts.
+      const [inv] = await db.query(`SELECT * FROM pairing_invitations WHERE code_hash=$1 FOR UPDATE`,
+        [pairingCodeHash(input.code)]);
+      if (!inv || inv.revoked_at !== null || inv.consumed_at !== null || Number(inv.expires_at) <= nowMs())
+        throw conflict('pairing_code_unavailable', 'pairing code is invalid, expired or already used');
+      const inviterSnapshot = await tx.getRosterOrThrow(inv.inviter_conv_id);
+      let device: { device_id: string; device_token?: string };
+      if (deviceToken) {
+        device = await tx.authDevice(deviceToken);
+        if (device.device_id === inviterSnapshot.device_id)
+          throw forbidden('same_device', 'pairing requires an independent device');
+        const active = await db.query('SELECT device_id FROM devices WHERE device_id=$1 AND revoked_at IS NULL FOR SHARE', [device.device_id]);
+        if (!active.length) throw unauth('device revoked');
+      } else {
+        device = await tx.registerDevice(input.owner_label ?? 'owner');
+      }
+      // createRoster validates role inside the transaction; errors roll back a new device too.
+      const binding = await tx.findByBinding(device.device_id, input.profile, input.thread_id);
+      // Lock both existing conversations in a stable order, before checking mutable
+      // state/project/ACL fields. UPDATE strength avoids a later peer-lock upgrade.
+      const locked = await db.query(`SELECT * FROM roster WHERE conv_id IN ($1,$2)
+        ORDER BY conv_id FOR UPDATE`, [inv.inviter_conv_id, binding?.conv_id ?? inv.inviter_conv_id]);
+      const inviter = mapRoster(locked.find((r) => r.conv_id === inv.inviter_conv_id));
+      const existing = binding ? mapRoster(locked.find((r) => r.conv_id === binding.conv_id)) : null;
+      const [inviterDevice] = await db.query('SELECT revoked_at FROM devices WHERE device_id=$1 FOR SHARE', [inviter.device_id]);
+      if (!inviterDevice || inviterDevice.revoked_at !== null || inviter.roster_status !== 'active')
+        throw conflict('inviter_inactive', 'inviter is no longer active');
+      if (existing && existing.project !== inviter.project)
+        throw conflict('project_mismatch', 'existing conversation belongs to another project');
+      const conversation = await tx.createRoster({
+        deviceId: device.device_id, profile: input.profile, threadId: input.thread_id,
+        alias: input.alias, role: input.role, task: input.task, project: inviter.project,
+        ownerLabel: input.owner_label ?? existing?.owner_label ?? 'owner',
+        allowSources: existing?.allow_sources ?? ['owner'],
+        tier: existing?.tier ?? (input.tier === 't2_desktop' ? 't2_desktop' : 't1_managed'),
+        registeredVia: 'pairing',
+      });
+      const duplicate = await db.query(`SELECT pairing_id FROM pairings WHERE revoked_at IS NULL AND
+        ((inviter_conv_id=$1 AND peer_conv_id=$2) OR (inviter_conv_id=$2 AND peer_conv_id=$1))`,
+        [inviter.conv_id, conversation.conv_id]);
+      if (duplicate.length) throw conflict('already_paired', 'conversations are already paired');
+      const pairing_id = newPairingId();
+      const now = nowMs();
+      await db.query(`INSERT INTO pairings(pairing_id,invitation_id,inviter_conv_id,peer_conv_id,created_at)
+        VALUES($1,$2,$3,$4,$5)`, [pairing_id, inv.invitation_id, inviter.conv_id, conversation.conv_id, now]);
+      await db.query('UPDATE pairing_invitations SET consumed_at=$2 WHERE invitation_id=$1', [inv.invitation_id, now]);
+      return { device, conversation, peer_conv_id: inviter.conv_id, pairing_id };
+    });
+  }
+
+  async listPairings(deviceId: string, convId: string) {
+    await this.ownedConversation(deviceId, convId);
+    const rows = await this.db.query(`SELECT pairing_id,inviter_conv_id,peer_conv_id,created_at,revoked_at FROM pairings
+      WHERE inviter_conv_id=$1 OR peer_conv_id=$1 ORDER BY created_at`, [convId]);
+    return rows.map((r) => ({ ...r, peer_conv_id: r.inviter_conv_id === convId ? r.peer_conv_id : r.inviter_conv_id,
+      created_at: Number(r.created_at), revoked_at: num(r.revoked_at) }));
+  }
+
+  async revokePairing(deviceId: string, convId: string, pairingId: string) {
+    await this.ownedConversation(deviceId, convId);
+    const rows = await this.db.query(`UPDATE pairings SET revoked_at=COALESCE(revoked_at,$3)
+      WHERE pairing_id=$1 AND (inviter_conv_id=$2 OR peer_conv_id=$2) RETURNING pairing_id`, [pairingId, convId, nowMs()]);
+    if (!rows.length) throw forbidden('not_pairing_member', 'conversation is not a member of this pairing');
+    return { revoked: true };
+  }
+
   // ---- requests (§5, §9 #10–#13, #18) -----------------------------------
 
   private async chainDepthFor(parentRequestId: string | null): Promise<number> {
@@ -432,15 +546,34 @@ export class Store {
   }
 
   /** §6 three-layer authorization + §6 64KB cap + §5.4 chain cap. */
-  private assertCanSend(from: RosterRow, to: RosterRow, bodyBytes: number) {
+  private async assertCanSend(from: RosterRow, to: RosterRow, bodyBytes: number) {
+    // Ignore pre-transaction snapshots. Hold current roster values through commit
+    // so an admin pause/revoke or ACL edit cannot race an authorization decision.
+    const locked = await this.db.query(`SELECT * FROM roster WHERE conv_id IN ($1,$2)
+      ORDER BY conv_id FOR SHARE`, [from.conv_id, to.conv_id]);
+    const currentFrom = locked.find((r) => r.conv_id === from.conv_id);
+    const currentTo = locked.find((r) => r.conv_id === to.conv_id);
+    if (!currentFrom || !currentTo) throw notFound('conv_not_found', 'conversation no longer exists');
+    from = mapRoster(currentFrom);
+    to = mapRoster(currentTo);
     if (from.roster_status !== 'active') throw forbidden('sender_inactive', 'sender not active');
     if (to.roster_status !== 'active') throw forbidden('target_inactive', 'target not active');
     if (bodyBytes > this.cfg.body_max_bytes) {
       throw new HttpError(413, 'body_too_large', `body exceeds ${this.cfg.body_max_bytes} bytes`);
     }
-    const allowed =
+    const devices = await this.db.query(`SELECT device_id FROM devices
+      WHERE device_id IN ($1,$2) AND revoked_at IS NULL FOR SHARE`, [from.device_id, to.device_id]);
+    if (devices.length !== new Set([from.device_id, to.device_id]).size)
+      throw forbidden('device_inactive', 'a conversation device is inactive');
+    let allowed =
       to.allow_sources.includes(from.conv_id) ||
       to.allow_sources.includes(`device:${from.device_id}`);
+    if (!allowed) {
+      const pairs = await this.db.query(`SELECT pairing_id FROM pairings WHERE revoked_at IS NULL AND
+        ((inviter_conv_id=$1 AND peer_conv_id=$2) OR (inviter_conv_id=$2 AND peer_conv_id=$1)) FOR SHARE`,
+        [from.conv_id, to.conv_id]);
+      allowed = pairs.length > 0;
+    }
     if (!allowed) throw forbidden('source_not_allowed', 'sender not allowed by target');
   }
 
@@ -455,10 +588,39 @@ export class Store {
     parentRequestId?: string | null;
     clientKey?: string | null;
   }): Promise<RequestRow> {
+    let pendingEvents: StoreEvent[] = [];
+    try {
+      const result = await this.db.transaction(async (db) => {
+        const tx = new Store(db, this.cfg);
+        const row = await tx.createRequestInTransaction(input);
+        pendingEvents = tx.drainEvents();
+        return row;
+      });
+      this.events.push(...pendingEvents);
+      return result;
+    } catch (error) {
+      // This diagnostic deliberately survives the rejected enqueue transaction.
+      if (error instanceof HttpError && error.code === 'chain_limit_reached' && input.parentRequestId) {
+        const parent = await this.getRequestOrThrow(input.parentRequestId);
+        await this.raiseChainLimitNotice(input.from.conv_id, parent.root_request_id);
+      }
+      throw error;
+    }
+  }
+
+  private async createRequestInTransaction(input: {
+    from: RosterRow; to: string; type: MessageType; body: string;
+    context?: string | null; resultRequirement?: string | null; ttlS?: number;
+    parentRequestId?: string | null; clientKey?: string | null;
+  }): Promise<RequestRow> {
     if (!MESSAGE_TYPES.includes(input.type)) {
       throw bad('bad_type', `type must be one of ${MESSAGE_TYPES.join(', ')}`);
     }
-    // Idempotent retry (§5.1 网络重试沿用原编号): same client key → same request.
+    const fromRow = await this.getRosterOrThrow(input.from.conv_id);
+    const toRow = await this.getRosterOrThrow(input.to);
+    const size = Buffer.byteLength(input.body, 'utf8');
+    await this.assertCanSend(fromRow, toRow, size);
+    // Idempotency never bypasses current authorization after unpairing.
     if (input.clientKey) {
       const dup = await this.db.query(
         'SELECT * FROM requests WHERE from_conv=$1 AND client_key=$2',
@@ -467,9 +629,6 @@ export class Store {
       if (dup.length) return mapRequest(dup[0]);
     }
 
-    const toRow = await this.getRosterOrThrow(input.to);
-    const size = Buffer.byteLength(input.body, 'utf8');
-    this.assertCanSend(input.from, toRow, size);
 
     let root: string | null = null;
     let depth = 0;
@@ -551,15 +710,21 @@ export class Store {
     }
   }
 
-  async getRequest(requestId: string): Promise<RequestRow | null> {
+  async getRequest(requestId: string): Promise<StartAuthorizedRequest | null> {
     const rows = await this.db.query('SELECT * FROM requests WHERE request_id=$1', [requestId]);
     return rows.length ? mapRequest(rows[0]) : null;
   }
 
-  async getRequestOrThrow(requestId: string): Promise<RequestRow> {
+  async getRequestOrThrow(requestId: string): Promise<StartAuthorizedRequest> {
     const r = await this.getRequest(requestId);
     if (!r) throw notFound('request_not_found', `no such request: ${requestId}`);
     return r;
+  }
+
+  private async lockRequest(requestId: string): Promise<StartAuthorizedRequest> {
+    const [row] = await this.db.query('SELECT * FROM requests WHERE request_id=$1 FOR UPDATE', [requestId]);
+    if (!row) throw notFound('request_not_found', `no such request: ${requestId}`);
+    return mapRequest(row);
   }
 
   async listResults(requestId: string): Promise<ResultRow[]> {
@@ -571,9 +736,14 @@ export class Store {
   }
 
   async claimRequest(requestId: string, deviceId: string): Promise<RequestRow> {
-    const r = await this.getRequestOrThrow(requestId);
+    return this.db.transaction((db) => new Store(db, this.cfg).claimRequestInTransaction(requestId, deviceId));
+  }
+
+  private async claimRequestInTransaction(requestId: string, deviceId: string): Promise<RequestRow> {
+    const r = await this.lockRequest(requestId);
     const row = await this.getRoster(r.to_conv);
     if (!row || row.device_id !== deviceId) throw forbidden('not_target_device', 'not the target device');
+    await this.assertCanSend(await this.getRosterOrThrow(r.from_conv), row, r.size_bytes);
     if (r.delivery_status === 'expired' || r.delivery_status === 'rejected') {
       return r;
     }
@@ -586,9 +756,44 @@ export class Store {
     return (await this.getRequest(requestId))!;
   }
 
+  /** The spending boundary: permission is committed before the bridge starts a local turn.
+   * A successful grant is in flight even if its pairing is subsequently removed.
+   * No turn ID is invented here; /start later records the actual local turn ID.
+   */
+  async authorizeStart(requestId: string, deviceId: string): Promise<RequestRow> {
+    return this.db.transaction(async (db) => {
+      const tx = new Store(db, this.cfg);
+      const r = await tx.lockRequest(requestId);
+      const target = await tx.getRosterOrThrow(r.to_conv);
+      if (target.device_id !== deviceId) throw forbidden('not_target_device', 'not the target device');
+      if (['completed', 'failed', 'interrupted', 'result_pending_verify'].includes(r.exec_status) ||
+          r.delivery_status === 'expired' || r.delivery_status === 'rejected')
+        throw conflict('request_not_startable', 'request is terminal or unavailable');
+      if (r.start_authorized_at !== null) return r;
+      if (r.exec_status !== 'pending' || r.expires_at <= nowMs())
+        throw conflict('request_not_startable', 'request has started or expired');
+      await tx.assertCanSend(await tx.getRosterOrThrow(r.from_conv), target, r.size_bytes);
+      const now = nowMs();
+      await db.query(`UPDATE requests SET start_authorized_at=$2, started_at=$2,
+        exec_status='running', delivery_status='device_received', claimed_at=COALESCE(claimed_at,$2)
+        WHERE request_id=$1`, [requestId, now]);
+      return tx.getRequestOrThrow(requestId);
+    });
+  }
+
   async startRequest(requestId: string, turnId: string): Promise<RequestRow> {
-    const r = await this.getRequestOrThrow(requestId);
-    if (r.exec_status === 'completed' || r.exec_status === 'interrupted') return r;
+    return this.db.transaction((db) => new Store(db, this.cfg).startRequestInTransaction(requestId, turnId));
+  }
+
+  private async startRequestInTransaction(requestId: string, turnId: string): Promise<RequestRow> {
+    const r = await this.lockRequest(requestId);
+    if (r.start_authorized_at === null) {
+      await this.assertCanSend(await this.getRosterOrThrow(r.from_conv), await this.getRosterOrThrow(r.to_conv), r.size_bytes);
+    }
+    if (['completed', 'failed', 'interrupted', 'result_pending_verify'].includes(r.exec_status)) return r;
+    if (r.delivery_status === 'expired' || r.delivery_status === 'rejected' ||
+        (r.start_authorized_at === null && r.exec_status === 'pending' && r.expires_at <= nowMs()))
+      throw conflict('request_not_startable', 'request is unavailable or expired');
     await this.db.query(
       `UPDATE requests SET exec_status='running', turn_id=$2, started_at=COALESCE(started_at,$3),
          delivery_status = CASE WHEN delivery_status='queued' THEN 'device_received' ELSE delivery_status END
@@ -710,7 +915,19 @@ export class Store {
 
   /** §9 #13 + §5.4:未启动可取消；已运行发中断请求. */
   async cancelRequest(requestId: string, fromConv: string): Promise<RequestRow> {
-    const r = await this.getRequestOrThrow(requestId);
+    let pendingEvents: StoreEvent[] = [];
+    const result = await this.db.transaction(async (db) => {
+      const tx = new Store(db, this.cfg);
+      const row = await tx.cancelRequestInTransaction(requestId, fromConv);
+      pendingEvents = tx.drainEvents();
+      return row;
+    });
+    this.events.push(...pendingEvents);
+    return result;
+  }
+
+  private async cancelRequestInTransaction(requestId: string, fromConv: string): Promise<RequestRow> {
+    const r = await this.lockRequest(requestId);
     if (r.from_conv !== fromConv) {
       throw forbidden('not_origin', 'only the originating conversation can cancel');
     }

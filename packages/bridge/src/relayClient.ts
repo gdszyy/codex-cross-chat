@@ -6,9 +6,14 @@
 import WebSocket from 'ws';
 import type { WsEvent } from '@relay/protocol';
 
+const SAFE_ERROR_CODES = new Set(['unbound', 'unauthorized', 'source_not_allowed', 'binding_mismatch',
+  'pairing_code_unavailable', 'invalid_pairing_code', 'bad_pairing_field', 'same_device', 'project_mismatch',
+  'already_paired', 'pairing_rate_limit', 'inviter_inactive', 'request_not_startable', 'request_not_found',
+  'not_target_device', 'internal_error', 'bad_role', 'invitation_not_found', 'pairing_not_found']);
+
 export interface RelayClientOptions {
   baseUrl: string;
-  deviceToken: string;
+  deviceToken?: string;
   heartbeatMs?: number;
   maxBackoffMs?: number;
   onEvent?: (e: WsEvent) => void;
@@ -44,6 +49,11 @@ export class RelayClient {
   private maxBackoffMs: number;
 
   constructor(private opts: RelayClientOptions) {
+    const url = new URL(opts.baseUrl);
+    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname.toLowerCase());
+    if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) || url.username || url.password) {
+      throw new Error('relay requires HTTPS (HTTP allowed only on loopback) and no URL credentials');
+    }
     this.heartbeatMs = opts.heartbeatMs ?? 30_000;
     this.maxBackoffMs = opts.maxBackoffMs ?? 60_000;
   }
@@ -60,7 +70,7 @@ export class RelayClient {
     const res = await fetch(this.opts.baseUrl + path, {
       method,
       headers: {
-        authorization: `Bearer ${this.opts.deviceToken}`,
+        ...(this.opts.deviceToken ? { 'x-device-token': this.opts.deviceToken } : {}),
         ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -73,11 +83,12 @@ export class RelayClient {
       parsed = text;
     }
     if (!res.ok) {
-      const err = new Error(
-        `relay ${method} ${path} -> ${res.status} ${parsed?.error?.code ?? ''} ${parsed?.error?.message ?? ''}`,
-      );
+      // Do not echo server messages: an untrusted peer/proxy could reflect a
+      // pairing code or credential into the error and therefore the log.
+      const code = SAFE_ERROR_CODES.has(parsed?.error?.code) ? parsed.error.code : '';
+      const err = new Error(`relay ${method} request -> ${res.status} ${code}`);
       (err as any).status = res.status;
-      (err as any).code = parsed?.error?.code;
+      (err as any).code = code;
       throw err;
     }
     return parsed?.data ?? parsed;
@@ -109,6 +120,16 @@ export class RelayClient {
     return this.http('POST', '/v1/roster/join', input);
   }
 
+  invite(convId: string) { return this.http('POST', '/v1/pairing/invitations', { conv_id: convId }); }
+  revokeInvitation(convId: string, id: string) {
+    return this.http('POST', `/v1/pairing/invitations/${encodeURIComponent(id)}/revoke`, { conv_id: convId });
+  }
+  redeem(input: Record<string, unknown>) { return this.http('POST', '/v1/pairing/redeem', input); }
+  pairings(convId: string) { return this.http('GET', `/v1/pairings?conv_id=${encodeURIComponent(convId)}`); }
+  unpair(convId: string, id: string) {
+    return this.http('POST', `/v1/pairings/${encodeURIComponent(id)}/revoke`, { conv_id: convId });
+  }
+
   sendRequest(input: Record<string, unknown>) {
     return this.http('POST', '/v1/requests', input);
   }
@@ -129,6 +150,10 @@ export class RelayClient {
     return this.http('POST', `/v1/requests/${encodeURIComponent(requestId)}/claim`, {});
   }
 
+  authorizeStart(requestId: string) {
+    return this.http('POST', `/v1/requests/${encodeURIComponent(requestId)}/authorize-start`, {});
+  }
+
   start(requestId: string, turnId: string) {
     return this.http('POST', `/v1/requests/${encodeURIComponent(requestId)}/start`, { turn_id: turnId });
   }
@@ -141,7 +166,7 @@ export class RelayClient {
 
   connect(): void {
     this.closed = false;
-    const url = this.opts.baseUrl.replace(/^http/, 'ws') + `/v1/device?token=${this.opts.deviceToken}`;
+    const url = this.opts.baseUrl.replace(/^http/, 'ws') + `/v1/device?token=${encodeURIComponent(this.opts.deviceToken ?? '')}`;
     this.log('info', `ws connecting ${url.replace(/token=[^&]+/, 'token=***')}`);
     const ws = new WebSocket(url);
     this.ws = ws;

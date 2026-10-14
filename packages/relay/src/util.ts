@@ -1,4 +1,10 @@
-import { randomBytes, randomInt } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
+
+/** 192 bits, transferable once. Only this digest is persisted. */
+export const newPairingCode = () => randomBytes(24).toString('base64url');
+export const pairingCodeHash = (code: string) => createHash('sha256').update(code).digest('hex');
+export const newPairingId = () => 'pair-' + randomBytes(16).toString('hex');
+export const newInvitationId = () => 'inv-' + randomBytes(16).toString('hex');
 
 const A36 = 'abcdefghijklmnopqrstuvwxyz0123456789';
 const A32 = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Crockford-ish, no I/O/0/1

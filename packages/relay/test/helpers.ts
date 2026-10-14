@@ -35,8 +35,8 @@ export interface TestRelay {
   close(): Promise<void>;
 }
 
-export async function startTestRelay(config: Record<string, number> = {}): Promise<TestRelay> {
-  const db = await openPglite();
+export async function startTestRelay(config: Record<string, number> = {}, dataDir?: string): Promise<TestRelay> {
+  const db = await openPglite(dataDir);
   const relay = await createRelay({ db, rootKey: TEST_ROOT_KEY, config, background: false });
   const port = await relay.listen(0);
   return {

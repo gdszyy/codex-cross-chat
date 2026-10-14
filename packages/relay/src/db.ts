@@ -13,6 +13,7 @@ export interface Db {
   kind: 'pglite' | 'pg';
   query<T = any>(sql: string, params?: unknown[]): Promise<T[]>;
   exec(sql: string): Promise<void>;
+  transaction<T>(work: (db: Db) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
 
@@ -86,6 +87,7 @@ CREATE TABLE IF NOT EXISTS requests (
 CREATE INDEX IF NOT EXISTS requests_to_conv ON requests(to_conv);
 CREATE INDEX IF NOT EXISTS requests_root ON requests(root_request_id);
 CREATE UNIQUE INDEX IF NOT EXISTS requests_client_key ON requests(from_conv, client_key);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS start_authorized_at BIGINT;
 
 CREATE TABLE IF NOT EXISTS results (
   result_id TEXT PRIMARY KEY,
@@ -131,6 +133,28 @@ CREATE TABLE IF NOT EXISTS events (
   created_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_device ON events(device_id, id);
+
+CREATE TABLE IF NOT EXISTS pairing_invitations (
+  invitation_id TEXT PRIMARY KEY,
+  code_hash TEXT NOT NULL UNIQUE,
+  inviter_conv_id TEXT NOT NULL REFERENCES roster(conv_id),
+  created_at BIGINT NOT NULL,
+  expires_at BIGINT NOT NULL,
+  consumed_at BIGINT,
+  revoked_at BIGINT
+);
+CREATE TABLE IF NOT EXISTS pairings (
+  pairing_id TEXT PRIMARY KEY,
+  invitation_id TEXT NOT NULL UNIQUE REFERENCES pairing_invitations(invitation_id),
+  inviter_conv_id TEXT NOT NULL REFERENCES roster(conv_id),
+  peer_conv_id TEXT NOT NULL REFERENCES roster(conv_id),
+  created_at BIGINT NOT NULL,
+  revoked_at BIGINT,
+  CHECK (inviter_conv_id <> peer_conv_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS pairings_active_members
+  ON pairings(LEAST(inviter_conv_id, peer_conv_id), GREATEST(inviter_conv_id, peer_conv_id))
+  WHERE revoked_at IS NULL;
 `;
 
 export async function migrate(db: Db): Promise<void> {
@@ -180,6 +204,19 @@ export async function openPglite(dataDir?: string): Promise<Db> {
     async exec(sql: string): Promise<void> {
       await pg.exec(sql);
     },
+    async transaction<T>(work: (db: Db) => Promise<T>): Promise<T> {
+      return pg.transaction(async (tx) => {
+        const pinned: Db = {
+          kind: 'pglite',
+          query: async <R = any>(sql: string, params: unknown[] = []) => (await tx.query<R>(sql, params as any[])).rows,
+          exec: async (sql) => { await tx.exec(sql); },
+          // All nested domain work already belongs to this transaction.
+          transaction: async (nested) => nested(pinned),
+          close: async () => { throw new Error('cannot close a transaction'); },
+        };
+        return work(pinned);
+      });
+    },
     async close(): Promise<void> {
       await pg.close();
     },
@@ -199,6 +236,27 @@ export async function openPg(connectionString: string): Promise<Db> {
     },
     async exec(sql: string): Promise<void> {
       await pool.query(sql);
+    },
+    async transaction<T>(work: (db: Db) => Promise<T>): Promise<T> {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const pinned: Db = {
+          kind: 'pg',
+          query: async <R = any>(sql: string, params: unknown[] = []) => (await client.query(sql, params as any[])).rows as R[],
+          exec: async (sql) => { await client.query(sql); },
+          transaction: async (nested) => nested(pinned),
+          close: async () => { throw new Error('cannot close a transaction'); },
+        };
+        const result = await work(pinned);
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
     },
     async close(): Promise<void> {
       await pool.end();

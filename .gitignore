@@ -10,3 +10,9 @@ run/
 *.sqlite
 coverage/
 .DS_Store
+.env
+.env.*
+*.credentials.json
+bridge.config.json
+pair-code.txt
+*.pair-code

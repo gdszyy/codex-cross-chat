@@ -2,7 +2,13 @@
 
 **读者**：将要接入本系统的 Codex 对话 / agent（下称"你"），以及替你装环境的 Owner。
 **目标**：读完这份文档就能接入——装工具 → 自举身份 → 发现对方 → 发任务 / 查状态 / 读结果 / 取消。
-**口径**：本仓实现严格按 `docs/mechanism-design.md` v1.1 与 `docs/m2-reconciliation.md`；本文只讲"怎么用"。
+**口径**：原有收发语义按 `docs/mechanism-design.md` 与 `docs/m2-reconciliation.md`；v1.2 主动邀请配对的新增契约见 `docs/pairing.md`。
+
+## 新设备推荐入口：主动邀请配对
+
+A 已有设备和稳定 `conv_id` 后，**主动**调用 `relay_pair_invite`，生成十分钟一次性配对码。A 不因登记/公布地址自动邀请。B 只需该码，用 Bridge 的 `--pair-code-file` 启动；服务原子创建/确认 B 的独立设备、登记对话并建立双向权限，凭证直接保存 B 本机。完整步骤见 `docs/handover/HANDOVER-deviceB.md`；接口、撤销与解除见 `docs/pairing.md`。
+
+既有 root 引导和 join code 保持兼容。下文 join code 仍需设备令牌，只解决 roster 加入，不等同于新配对码。配对权限独立于手工 `allow_sources` 保存；双方重启不必重新互开权限。自动收发要求双方常驻 T1 Bridge；T2 仍 `manual_pull`。
 
 > 本文所有示例一律用占位地址 `https://<your-relay>` 与本机演练值 `http://127.0.0.1:8788`。
 > **任何示例都不含真实密钥**：`<device-token>` / `<root-key>` 请从 Owner 给你的凭据载体里取，不要写进本文或任何文档。

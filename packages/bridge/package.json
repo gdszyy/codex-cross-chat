@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
     "start": "tsx src/index.ts",
+    "pair": "tsx src/pairing-cli.ts",
     "test": "node scripts/run-tests.mjs"
   },
   "dependencies": {

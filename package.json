@@ -1,8 +1,8 @@
 {
   "name": "codex-relay",
   "private": true,
-  "version": "0.1.0",
-  "description": "Codex cross-device conversation relay (M2 implementation)",
+  "version": "0.2.0",
+  "description": "Codex cross-device conversation relay with one-time pairing",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "engines": {
@@ -22,6 +22,8 @@
     "vitest": "^2.1.8"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

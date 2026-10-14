@@ -12,3 +12,9 @@ dist
 *.sqlite
 *.log
 .git
+.env
+.env.*
+**/*.credentials.json
+**/bridge.config.json
+**/pair-code.txt
+**/*.pair-code

@@ -40,7 +40,8 @@ export async function createRelay(opts: RelayOptions): Promise<Relay> {
       if (!res.headersSent) {
         res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
       }
-      res.end(JSON.stringify({ ok: false, error: { code, message: String(err?.message ?? err) } }));
+      // Driver errors may include parameter values. Never expose credentials or invitation codes.
+      res.end(JSON.stringify({ ok: false, error: { code, message: err instanceof HttpError ? err.message : 'internal server error' } }));
     });
   });
   hub.attach(server);
