@@ -18,7 +18,7 @@ export interface BridgeConfig {
   state_dir?: string;
   turn_timeout_ms?: number;
   heartbeat_ms?: number;
-  result_delivery_mode?: 'push_turn' | 'manual_read';
+  result_delivery_mode?: 'push_turn' | 'manual_read' | 'desktop_queue';
   bindings?: Binding[];
   pairing?: { code_file?: string; alias: string; role: string; task: string; owner_label?: string };
   pairing_receipts?: { pairing_id: string; peer_conv_id: string; conv_id: string; thread_id: string }[];
@@ -75,8 +75,21 @@ export function readConfig(file: string): BridgeConfig {
 export function configOptions(file: string, codeFile?: string): BridgeOptions & { stateDir: string } {
   file = outsideCodex(file);
   const raw = readConfig(file);
-  if (raw.result_delivery_mode !== undefined && !['push_turn', 'manual_read'].includes(raw.result_delivery_mode)) {
-    throw new Error('result_delivery_mode must be push_turn or manual_read');
+  if (raw.result_delivery_mode !== undefined && !['push_turn', 'manual_read', 'desktop_queue'].includes(raw.result_delivery_mode)) {
+    throw new Error('result_delivery_mode must be push_turn, manual_read or desktop_queue');
+  }
+  if (raw.result_delivery_mode === 'desktop_queue') {
+    if (raw.pairing || !(raw.bindings?.length)) throw new Error('desktop_queue requires existing paired bindings');
+    const aliases = new Set<string>(), convs = new Set<string>(), threads = new Set<string>();
+    for (const binding of raw.bindings) {
+      if (!binding.threadId || !binding.convId || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(binding.desktopThreadId ?? '')) {
+        throw new Error('desktop_queue requires each existing threadId/convId and an exact desktopThreadId UUID');
+      }
+      if (aliases.has(binding.alias) || convs.has(binding.convId) || threads.has(binding.threadId)) {
+        throw new Error('desktop_queue requires unique aliases, conversation IDs and execution threads');
+      }
+      aliases.add(binding.alias); convs.add(binding.convId); threads.add(binding.threadId);
+    }
   }
   if (raw.pairing) outsideGit(file); // Refuse an unsafe destination BEFORE consuming the one-shot code.
   if (raw.pairing && (raw.bindings?.length ?? 0) > 0) throw new Error('pairing bootstrap requires an empty bindings list; use saved config after redemption');

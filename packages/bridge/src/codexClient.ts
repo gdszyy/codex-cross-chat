@@ -14,6 +14,8 @@ export interface CodexClientOptions {
   env?: Record<string, string>;
   /** Run through a shell (needed on Windows for a `.cmd` CLI wrapper). */
   shell?: boolean;
+  /** Explicit opt-in for consumers of locally verified experimental APIs. */
+  experimentalApi?: boolean;
 }
 
 interface Pending {
@@ -67,8 +69,8 @@ export class CodexClient extends EventEmitter {
       'initialize',
       {
         clientInfo: { name: 'codex-relay-bridge', title: 'Codex Relay Bridge', version: '0.1.0' },
-        // Declare only what the bridge needs (compat §7 R6) — not experimentalApi.
-        capabilities: { experimentalApi: false, requestAttestation: false },
+        // Existing managed-thread consumers stay on the stable API by default.
+        capabilities: { experimentalApi: this.opts.experimentalApi === true, requestAttestation: false },
       },
       timeoutMs,
     );

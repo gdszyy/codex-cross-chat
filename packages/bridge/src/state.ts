@@ -194,6 +194,17 @@ export class LocalState {
 
   // ---- kv (event cursor) --------------------------------------------------
 
+  /** Durable desktop-queue intent/receipt; never a credential or message body. */
+  async getDesktopDelivery(key: string): Promise<any | null> {
+    const rows = await this.db.query<any>('SELECT value FROM kv WHERE key=$1', [`desktop:${key}`]);
+    return rows.length ? JSON.parse(rows[0].value) : null;
+  }
+
+  async saveDesktopDelivery(key: string, value: unknown): Promise<void> {
+    await this.db.query('INSERT INTO kv(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2',
+      [`desktop:${key}`, JSON.stringify(value)]);
+  }
+
   async getBootstrap(alias: string): Promise<any | null> {
     const rows = await this.db.query<any>('SELECT value FROM kv WHERE key=$1', [`bootstrap:${alias}`]);
     return rows.length ? JSON.parse(rows[0].value) : null;

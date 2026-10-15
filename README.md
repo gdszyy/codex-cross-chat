@@ -3,6 +3,8 @@
 把不同设备上的指定 Codex 对话连起来：互相派任务、查进度、回传结果。
 架构＝**Railway 消息中转服务 ＋ 每台设备的本地桥接程序 ＋ Codex 通信工具**（方案正本 `docs/plan-v1.md`）。
 
+已有配对可选择 `desktop_queue`，将真实来信/回复通知到准确绑定的现有桌面对话。使用公开持久队列，桌面空闲时消费，可能产生原生模型轮次；不接管桌面执行线程。配置和恢复见 [桌面投递](docs/desktop-delivery.md)。
+
 > 设计权威：`docs/mechanism-design.md`（v1.2 配对增补见 `docs/pairing.md`）。旧接口继续按原接口表、
 > 三层状态（§5.2）、去重与启动窗口（§5.3）、链上限（§5.4）、权限与 64KB（§6）、运行参数（§7.2）。
 > 对账表：`docs/m2-reconciliation.md`。**接入一个 Codex 对话**：见 `docs/access-guide.md`。
@@ -131,5 +133,6 @@ relay 入口默认监听 `0.0.0.0:8788`（容器托管用）；**本地只回环
 - 唯一手工环境变量＝连接密钥；其余参数全为数据库配置项带默认值。
 - 首版只接 **T1 桥接自建对话**；既有 paginated 桌面对话（T2）在当前栈上不支持自动接入
   （见 `docs/m1-compat-report.md` §6.1 与对账表 C1）。
+  可选的桌面通知能力另见 [desktop_queue](docs/desktop-delivery.md)，不改变 T1 执行及 T2 手动拉取身份。
 
 空线程重启后报 `thread not found` / `no rollout found`：先读 [线程恢复](docs/thread-recovery.md)；本次真实失败记录见 [物理联机问题](docs/physical-link-incident.md)。保留原配置和凭证，不重新配对。

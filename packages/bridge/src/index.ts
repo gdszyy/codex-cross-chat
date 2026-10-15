@@ -10,7 +10,14 @@ async function main(): Promise<void> {
   const value = (flag: string) => { const i = args.indexOf(flag); return i < 0 ? undefined : args[i + 1]; };
   const cfgPath = value('--config') ?? process.env.BRIDGE_CONFIG;
   if (!cfgPath) throw new Error('--config <path> or BRIDGE_CONFIG required');
+  const replayRequest = value('--replay-desktop-request');
+  if (args.includes('--replay-desktop-request') && (!replayRequest || !/^r-[a-zA-Z0-9_-]+$/.test(replayRequest))) {
+    throw new Error('--replay-desktop-request requires an exact request_id');
+  }
   const opts = configOptions(cfgPath, value('--pair-code-file'));
+  if (replayRequest && opts.resultDeliveryMode !== 'desktop_queue') {
+    throw new Error('--replay-desktop-request requires desktop_queue mode');
+  }
   await fs.promises.mkdir(opts.stateDir, { recursive: true, mode: 0o700 });
   const lifecycleFile = path.join(opts.stateDir, 'bridge.lifecycle.jsonl');
   const secrets = new Set([opts.deviceToken, opts.pairing?.code].filter((s): s is string => Boolean(s)));
@@ -73,7 +80,8 @@ async function main(): Promise<void> {
         lifecycle('sql_log_failed');
       });
     } });
-    await bridge.start(state);
+    if (replayRequest) await bridge.startReplay(state);
+    else await bridge.start(state);
     const saved = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
     if (typeof saved.device_token === 'string') secrets.add(saved.device_token);
     bridge.codexClient.on('exit', (code: number) => {
@@ -82,6 +90,14 @@ async function main(): Promise<void> {
     if (!bridge.codexClient.isRunning) throw new Error('Codex App Server exited during Bridge startup');
     lifecycle('running');
     console.log(`[bridge] running pid=${process.pid}`);
+    if (replayRequest) {
+      const receipt = await bridge.replayDesktopRequest(replayRequest);
+      console.log('[bridge] desktop replay ' + JSON.stringify({ status: receipt.status,
+        request_id: receipt.requestId, result_id: receipt.resultId, local_conv_id: receipt.localConvId,
+        thread_id: receipt.threadId, queued_submission_id: receipt.queuedSubmissionId,
+        client_user_message_id: receipt.clientUserMessageId }));
+      await shutdown('desktop_replay_complete', 0);
+    }
   } catch (error) { fatal('startup_failed', error); }
 }
 
