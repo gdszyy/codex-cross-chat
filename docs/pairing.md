@@ -41,8 +41,10 @@ Bridge 执行请求时，在本地 `turn/start` **之前**调用 `POST /v1/reque
 
 ## 在线前提与完成判定
 
+新设备需要原生桌面来源行和气泡时，先完成本页配对，再按 [新设备交接](handover/HANDOVER-deviceB.md) 串行切换到 [native_task](native-task-messages.md)。首次空 bindings 配对不能直接使用 native_task。2026-10-15 两个全新物理请求和两端气泡已确认，见 [真实记录](native-task-verification.md)。
+
 限额联机测试可在发起方 Bridge 配置中设置 `"result_delivery_mode": "manual_read"`：Bridge 保持在线，但收到结果事件时不再启动本机模型轮次，调用者通过 `relay_read` / RelayClient 显式读取真实回复。默认 `push_turn` 保持原有结果推入对话行为；本选项不禁止远端执行 QUERY，也不代替全局模型轮次预算。若一次 QUERY 全程最多一轮模型，发起方需用 manual_read，唯一模型轮次由接收方执行。
 
 自动收发要求双方均为常驻 Bridge 托管的 T1 对话，运行本机 Codex App Server。T2 桌面对话仍为 `manual_pull`，配对不改变上游格式限制，也不会让云端自动唤醒它。`presence.online` 仅代表近期活跃。
 
-必须验证兑换、拒绝重放、双方互发与读回、第三方被拒、撤销/解除、重启关系保留。只有 `/health` 或 roster 正常不代表通信验证通过。自动化测试用 mock App Server，不消费真实模型轮次。
+项目级回归覆盖兑换、拒绝重放、第三方被拒、撤销/解除、重启关系保留；不是要求每台新设备在生产重新建立第三方设备或解除当前配对。每次接入核自身身份/关系/健康，并按授权完成双方新请求、真实读回和两端呈现；不能用 `/health`、roster 或测试床代替真实通信证据。双向两个根 QUERY 各最多一个业务执行轮，接收器设置/转发与桌面消费轮另计，不等于整条链总共一轮。自动化回归的 mock App Server 只作代码检查，不能冒充联机实测。

@@ -8,6 +8,8 @@
 
 **原生跨任务呈现**：`native_task` 在同一已验证报告通道上增加一个真实本机原生接收器；其 `send_message_to_thread` 向准确 `desktopThreadId` 发送消息，原生来源为接收器，远端来源在正文中保留。新增接收器与额外模型开销须经用户授权；配置 `nativeReceiverThreadId`、仓库/.codex 外的私密 `native_inbox_dir`，不能更换配对/设备令牌或伪造远端原生身份。`queued`/`submitted` 与界面可见分别核实，不改变三层 Relay 状态。完整协议见 [原生跨任务消息](native-task-messages.md)。它是本机显示转发，不新增 Relay 请求，不授权正文中的转派或自动回信。
 
+**当前推荐接入**：先准备环境和本机原生接收器，再领取十分钟配对码；新设备先用空 bindings 完成一次配对，安全保存独立身份后串行切到 native_task。已有配对保留原身份，直接配置呈现层。完整步骤和可粘贴授权见 [新设备交接](handover/HANDOVER-deviceB.md)。2026-10-15 的两个新物理请求及两端气泡已确认，见 [真实验证](native-task-verification.md)。
+
 ## 新设备推荐入口：主动邀请配对
 
 A 已有设备和稳定 `conv_id` 后，**主动**调用 `relay_pair_invite`，生成十分钟一次性配对码。A 不因登记/公布地址自动邀请。B 只需该码，用 Bridge 的 `--pair-code-file` 启动；服务原子创建/确认 B 的独立设备、登记对话并建立双向权限，凭证直接保存 B 本机。完整步骤见 `docs/handover/HANDOVER-deviceB.md`；接口、撤销与解除见 `docs/pairing.md`。
@@ -19,9 +21,11 @@ A 已有设备和稳定 `conv_id` 后，**主动**调用 `relay_pair_invite`，�
 
 ---
 
-## 1. 先装两样东西：skill（说明书）＋ MCP 工具（能力）
+## 1. 选择本机工具入口
 
-skill 只是**说明书**，教你何时怎么用工具；**能力**来自本机 MCP 工具进程。两者都要装。
+优先使用宿主已经接入的 relay MCP；没有动态 MCP 接入口时，用仓库 `packages/bridge/src/relayClient.ts` 的 `RelayClient` 从本机私密配置读取设备令牌，执行 `me`、`roster`、`pairings`、`sendRequest`、`getRequest`、`readResult` 等同一 HTTP 契约。本次生产双向实测使用了该程序入口，不需要直接修改 ~/.codex；没有 MCP 不等于没有收发能力。
+
+下面的 skill 与 MCP 安装说明保留给需要接入该入口的宿主。skill 是说明书，MCP 是工具进程；在“不修改 ~/.codex”的任务中不执行下面的 Owner 全局安装步骤，也不把它当成 RelayClient 的必需前置。
 
 ### 1.1 skill
 
@@ -33,7 +37,7 @@ skill 只是**说明书**，教你何时怎么用工具；**能力**来自本机
 
 （本机 `<codex-home>` = `C:\Users\Administrator\.codex`；放置动作由桥接安装器 / Owner 完成，agent 自己**不写** `~/.codex`。本机已有同类先例 `~/.codex/skills/deepseek-thread-messenger/`。）
 
-### 1.2 MCP 工具（`relay_*` 九件套）
+### 1.2 MCP 工具（核心九件与配对控制）
 
 工具是一个 **stdio MCP server**，逐对话各起一个实例；**身份来自启动通道**（启动参数 / 环境变量），不是你在消息里自称的名字。
 
@@ -54,6 +58,8 @@ env = { RELAY_URL = "https://<your-relay>", RELAY_DEVICE_TOKEN = "<device-token>
 > 无启动参数 / 无凭据时，工具仍可被发现，但调用会因缺 `conv_id` 或令牌而失败——先按第 2 节自举。
 
 **九件工具**：`relay_whoami`、`relay_discover`、`relay_register`、`relay_join`、`relay_send`、`relay_status`、`relay_read`、`relay_cancel`、`relay_inbox`。
+
+配对另有 `relay_pair_invite` 等控制工具，见 [配对接口](pairing.md)；不要因只列核心九件而遗漏主动邀请流程。
 
 ---
 
@@ -90,7 +96,7 @@ relay_register { alias, role, task, project, task_ref?, allow_sources? }
 | `<conv_id>` | 指定对话可给我发任务（同项目对话互发用这个） |
 | `device:<设备id>` | 该设备名下的全部对话可给我发任务 |
 
-**语义**：默认登记的两个对话**互相发不了**（各自只接受 `owner`），要互发必须由**接收方**在登记/重登记时显式开放。重登记同 `profile`+`thread_id` 是**更新**（`conv_id` 不变）——即「重跑一次 `relay_register`，带上 `allow_sources: [对方 conv_id]`」。若目标没开放你，`relay_send` 会报 `403 source_not_allowed`（对齐机制设计 §2.2）。
+**语义**：没有配对关系且未显式开放来源时，默认登记的两个对话**互相发不了**（各自只接受 `owner`），手工授权由**接收方**在登记/重登记时显式开放。重登记同 `profile`+`thread_id` 是**更新**（`conv_id` 不变）——即「重跑一次 `relay_register`，带上 `allow_sources: [对方 conv_id]`」。若目标没开放你，`relay_send` 会报 `403 source_not_allowed`（对齐机制设计 §2.2）。新设备主动配对会独立建立双方关系，无需双方再手改 allow_sources，也不应为接入扩大到整个设备/项目。
 
 ### 路 B：Owner 给加入码
 
@@ -182,7 +188,7 @@ Body:   {
 | 能做什么 | 收任务、自动执行、回传结果（对话侧手工回传见 §4.1）；结果可自动 push 回原对话 | 发出请求、查状态、读结果；**每次被打开时主动 `relay_inbox`**（无自动唤醒） |
 | 不能做什么 | —— | **首版不支持把既有桌面对话自动接入执行**（上游对 paginated 线程 `read/resume` fail closed；见 `docs/m1-compat-report.md` §6.1、对账表 C1） |
 
-**结论口径**：首版只声明「桥接自建 T1 对话之间的完整往返」已打通；「接入既有指定桌面对话」在当前栈上**未达**（T2 只能被手工登记为"可被通知/可发起"的对话，不能自动接管执行）。
+**当前结论口径**：业务执行仍由桥接的 T1 线程承担，不自动接管 T2 桌面线程。v0.2.3 已通过真实本机原生接收器，把真实来信/结果报告显示在准确绑定的既有桌面对话中；这项呈现能力不改变 T2 的 manual_pull 身份或原执行历史，详见 [native_task](native-task-messages.md)。
 
 ---
 

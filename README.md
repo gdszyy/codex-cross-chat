@@ -7,6 +7,8 @@
 
 需要 Codex 原生“从另一项任务发送”来源行及气泡时，使用可选的 [`native_task`](docs/native-task-messages.md)：Bridge → 真实本机接收器任务 → Codex 原生发送工具 → 绑定桌面对话。需用户授权新增接收器及模型转发开销；来源显示本机接收器，正文保留远端对话身份。凭证、配对和执行历史不变。
 
+**新设备从这里开始**：[可直接粘给 Codex 的接入指令](docs/handover/PASTE-new-device.txt) · [完整接入步骤](docs/handover/HANDOVER-deviceB.md) · [v0.2.3 两个全新物理请求及两端气泡实测](docs/native-task-verification.md)。先准备再领取十分钟配对码；不交换长期凭证；无动态 MCP 时可用本机 RelayClient。
+
 > 设计权威：`docs/mechanism-design.md`（v1.2 配对增补见 `docs/pairing.md`）。旧接口继续按原接口表、
 > 三层状态（§5.2）、去重与启动窗口（§5.3）、链上限（§5.4）、权限与 64KB（§6）、运行参数（§7.2）。
 > 对账表：`docs/m2-reconciliation.md`。**接入一个 Codex 对话**：见 `docs/access-guide.md`。

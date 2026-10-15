@@ -3,6 +3,7 @@
   "profile": "default",
   "state_dir": "./state",
   "heartbeat_ms": 30000,
+  "result_delivery_mode": "manual_read",
   "bindings": [],
   "pairing": {
     "alias": "device-b-worker",

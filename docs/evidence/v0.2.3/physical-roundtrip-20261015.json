@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "tested_release": "v0.2.3",
+  "code_commit": "ffde077105528409336d28589929f4105b8e7baa",
+  "checked_at": "2026-10-15T05:09:39.856Z",
+  "validation": "real production read-only",
+  "requests": [
+    {
+      "request_id": "r-7538315c18d6e162",
+      "from_conv": "c-vi7m9h",
+      "to_conv": "c-nza0c7",
+      "delivery_status": "device_received",
+      "exec_status": "completed",
+      "return_status": "cloud_saved",
+      "turn_id": "01a13df4-3dde-7500-82b7-41710f88f16c",
+      "result_missing": false,
+      "results": [
+        {
+          "result_id": "res-f06eb9a25992df69",
+          "kind": "RESULT",
+          "body": "第二台设备已收到",
+          "evidence": "codex-thread:01a13b6e-9945-71c3-a31e-c7cf8279cdc9#turn:01a13df4-3dde-7500-82b7-41710f88f16c",
+          "is_first": true
+        }
+      ]
+    },
+    {
+      "request_id": "r-73b8589dac5ae65e",
+      "from_conv": "c-nza0c7",
+      "to_conv": "c-vi7m9h",
+      "delivery_status": "device_received",
+      "exec_status": "completed",
+      "return_status": "cloud_saved",
+      "turn_id": "01a13df8-b20b-7af3-846a-9d3d240731ba",
+      "result_missing": false,
+      "results": [
+        {
+          "result_id": "res-9f031b8ee347104a",
+          "kind": "RESULT",
+          "body": "Void笔记本已收到第二台设备消息",
+          "evidence": "codex-thread:01a13aec-2951-79f2-9b3b-24f4770e2c24#turn:01a13df8-b20b-7af3-846a-9d3d240731ba",
+          "is_first": true
+        }
+      ]
+    }
+  ],
+  "reverse_query_posts": 1,
+  "additional_query_posts": 0,
+  "void_desktop_bubble_confirmation": "confirmed_by_user",
+  "void_desktop_bubble_user_confirmation": "已看到来源行和该回复气泡",
+  "native_presentation_evidence": {
+    "second_device": "Actual native codex_app.send_message_to_thread source and report in the bound desktop conversation; prior user screenshot verified the native renderer.",
+    "void": "Direct user observation for r-73b8589dac5ae65e; not an inferred delivered status or a remote screenshot."
+  },
+  "model_budget_note": "Each request has one observed business turn ID. Receiver setup/forwarding and desktop consumption are separate; no claim of one total model turn."
+}
