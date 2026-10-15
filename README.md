@@ -3,6 +3,15 @@
 把不同设备上的指定 Codex 对话连起来：互相派任务、查进度、回传结果。
 架构＝**Railway 消息中转服务 ＋ 每台设备的本地桥接程序 ＋ Codex 通信工具**（方案正本 `docs/plan-v1.md`）。
 
+## 使用指引
+
+| 要了解什么 | 从这里进入 |
+| --- | --- |
+| 如何把新设备接进来 | [接入步骤](docs/handover/HANDOVER-deviceB.md) · [直接粘给 Codex 的指令](docs/handover/PASTE-new-device.txt) |
+| 接入后能做什么、怎么发任务和查结果 | [能力与使用指引](docs/usage-guide.md) |
+| 能力是否有真实验证 | [双向物理设备实测与两端原生气泡](docs/native-task-verification.md) |
+| 接口、权限与状态怎样解释 | [接入与接口权威说明](docs/access-guide.md) |
+
 已有配对可选择 `desktop_queue`，将真实来信/回复通知到准确绑定的现有桌面对话。使用公开持久队列，桌面空闲时消费，可能产生原生模型轮次；不接管桌面执行线程。配置和恢复见 [桌面投递](docs/desktop-delivery.md)。
 
 需要 Codex 原生“从另一项任务发送”来源行及气泡时，使用可选的 [`native_task`](docs/native-task-messages.md)：Bridge → 真实本机接收器任务 → Codex 原生发送工具 → 绑定桌面对话。需用户授权新增接收器及模型转发开销；来源显示本机接收器，正文保留远端对话身份。凭证、配对和执行历史不变。
@@ -137,6 +146,6 @@ relay 入口默认监听 `0.0.0.0:8788`（容器托管用）；**本地只回环
 - 唯一手工环境变量＝连接密钥；其余参数全为数据库配置项带默认值。
 - 首版只接 **T1 桥接自建对话**；既有 paginated 桌面对话（T2）在当前栈上不支持自动接入
   （见 `docs/m1-compat-report.md` §6.1 与对账表 C1）。
-  可选的桌面通知能力另见 [desktop_queue](docs/desktop-delivery.md)，不改变 T1 执行及 T2 手动拉取身份。
+  这里限制的是自动接管 T2 执行；已支持的原生报告呈现见 [native_task](docs/native-task-messages.md)，普通排队通知另见 [desktop_queue](docs/desktop-delivery.md)，均不改变原执行历史与 T2 身份。
 
 空线程重启后报 `thread not found` / `no rollout found`：先读 [线程恢复](docs/thread-recovery.md)；本次真实失败记录见 [物理联机问题](docs/physical-link-incident.md)。保留原配置和凭证，不重新配对。

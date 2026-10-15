@@ -2,6 +2,8 @@
 
 **读者**：将要接入本系统的 Codex 对话 / agent（下称"你"），以及替你装环境的 Owner。
 **目标**：读完这份文档就能接入——装工具 → 自举身份 → 发现对方 → 发任务 / 查状态 / 读结果 / 取消。
+
+用户操作先读 [如何接入](handover/HANDOVER-deviceB.md) 和 [接入后能做什么](usage-guide.md)；本文保留完整的接口与状态语义，供执行时核对。
 **口径**：原有收发语义按 `docs/mechanism-design.md` 与 `docs/m2-reconciliation.md`；v1.2 主动邀请配对的新增契约见 `docs/pairing.md`。
 
 **现有桌面对话通知**：已有 T1 配对可显式配置 `desktop_queue` 与准确 `desktopThreadId`，将来信/真实结果通知到现有桌面对话；桌面空闲时消费，可能产生一个原生模型轮次。原 T1 执行与 T2 身份不变，详见 [桌面投递](desktop-delivery.md)。下文首版 T2 自动执行限制仍有效，不能据通知入队声称接管桌面或已显示。

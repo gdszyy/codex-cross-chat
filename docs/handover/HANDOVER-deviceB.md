@@ -1,5 +1,7 @@
 # 新设备接入：一次性配对 + 原生桌面对话（v0.2.3）
 
+本页回答“如何接入”；接好之后的能力、操作示例和实际边界见 [接入后能做什么](../usage-guide.md)。
+
 接入语义以 [access-guide.md](../access-guide.md) 为准；配对机制见 [pairing.md](../pairing.md)，原生气泡见 [native-task-messages.md](../native-task-messages.md)。生产 Relay：https://codex-cross-chat-production.up.railway.app。2026-10-15 两台物理设备的两个全新请求及两端原生气泡已完成验证，见 [实测记录](../native-task-verification.md#v023-发布后的两个全新物理设备请求)。
 
 ## 给接收者的一段话
