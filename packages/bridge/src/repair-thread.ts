@@ -71,7 +71,7 @@ export async function repairThread(args: string[]): Promise<Record<string, unkno
   let codex: CodexClient | undefined;
   const connect = async () => {
     const c = new CodexClient({ command: opts.codexCommand, args: opts.codexArgs,
-      cwd: opts.cwd, env: opts.codexEnv, shell: opts.codexShell });
+      cwd: opts.cwd, env: opts.codexEnv, shell: opts.codexShell, experimentalApi: true });
     try { await c.start(); }
     catch (e) { await c.close(); throw e; }
     return c;

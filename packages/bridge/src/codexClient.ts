@@ -31,17 +31,29 @@ export interface TurnTerminal {
   raw: any;
 }
 
+/** Complete persisted history for an explicitly attached execution binding. */
+export interface ManagedThreadHistory {
+  id: string;
+  ephemeral: false;
+  historyMode: 'legacy' | 'paginated';
+  historyComplete: true;
+  turns: any[];
+  [field: string]: any;
+}
+
 export class CodexClient extends EventEmitter {
   private child?: ChildProcessWithoutNullStreams;
   private pending = new Map<number, Pending>();
   private nextId = 1;
   private initialized = false;
+  private managedThreadIds = new Set<string>();
 
   constructor(private opts: CodexClientOptions) {
     super();
   }
 
   async start(timeoutMs = 15000): Promise<void> {
+    this.managedThreadIds.clear();
     this.child = spawn(this.opts.command, this.opts.args, {
       cwd: this.opts.cwd,
       env: { ...process.env, ...(this.opts.env ?? {}) },
@@ -62,6 +74,7 @@ export class CodexClient extends EventEmitter {
     });
     this.child.on('exit', (code) => {
       this.initialized = false;
+      this.managedThreadIds.clear();
       this.emit('exit', code);
       this.rejectPending(new Error(`codex process exited (${code})`));
     });
@@ -151,33 +164,114 @@ export class CodexClient extends EventEmitter {
     });
     const id = res.thread?.id;
     if (typeof id !== 'string' || !id) throw new Error('thread/start did not return a thread id');
+    this.assertManagedThread(id, res.thread);
     // CLI 0.149.0 can return a path for an empty legacy thread before its
     // rollout exists. A real zero-turn, cross-process probe confirms that
     // thread/name/set persists it without spending a model turn. Do this
     // BEFORE publishing the thread's relay binding, never synthesize history.
     await this.rpc('thread/name/set', { threadId: id, name });
-    await this.verifyManagedThread(id);
+    this.managedThreadIds.add(id);
+    try { await this.managedThreadRead(id); }
+    catch (e) { this.managedThreadIds.delete(id); throw e; }
     return id;
   }
 
   /** Resume the exact stored T1 thread; never create/fork a replacement. */
   async threadResume(threadId: string): Promise<any> {
-    const res = await this.rpc('thread/resume', { threadId });
-    this.assertManagedThread(threadId, res.thread);
-    return this.verifyManagedThread(threadId);
+    // The caller supplies its persisted execution binding. Metadata validation
+    // happens before attaching a writer; display/queue reads never authorize it.
+    this.managedThreadIds.delete(threadId);
+    try {
+      const metadata = await this.threadRead(threadId, false);
+      this.assertManagedThread(threadId, metadata);
+      const res = await this.rpc('thread/resume', { threadId,
+        ...(metadata.historyMode === 'paginated' ? { excludeTurns: true } : {}) });
+      this.assertManagedThread(threadId, res.thread);
+      if (res.thread.canAcceptDirectInput !== true) {
+        throw new Error('managed thread recovery rejected: resume did not confirm direct input capability');
+      }
+      this.managedThreadIds.add(threadId);
+      return await this.managedThreadRead(threadId);
+    } catch (e) { this.managedThreadIds.delete(threadId); throw e; }
   }
 
   private assertManagedThread(threadId: string, thread: any): void {
-    if (thread?.id !== threadId || thread.ephemeral === true || thread.historyMode !== 'legacy') {
-      throw new Error(`managed thread recovery rejected for ${threadId}: expected the same durable legacy thread`);
+    if (thread?.id !== threadId || thread.ephemeral !== false
+      || thread.canAcceptDirectInput === false || !['legacy', 'paginated'].includes(thread.historyMode)) {
+      throw new Error('managed thread recovery rejected: expected the same non-ephemeral thread with a supported history mode');
     }
   }
 
-  private async verifyManagedThread(threadId: string): Promise<any> {
-    const thread = await this.threadRead(threadId, true);
-    this.assertManagedThread(threadId, thread);
-    if (!Array.isArray(thread.turns)) throw new Error(`managed thread history unavailable for ${threadId}`);
-    return thread;
+  private validateTurns(turns: any, paginated: boolean, seenTurns: Set<string>, seenItems: Set<string>): void {
+    if (!Array.isArray(turns)) throw new Error('managed thread history has no complete turn array');
+    for (const turn of turns) {
+      if (!turn || typeof turn.id !== 'string' || !turn.id || seenTurns.has(turn.id)
+        || !['completed', 'failed', 'interrupted', 'inProgress'].includes(turn.status)
+        || !Array.isArray(turn.items) || (turn.itemsView !== undefined && turn.itemsView !== 'full')) {
+        throw new Error('managed thread history contains incomplete, duplicate or invalid turns');
+      }
+      seenTurns.add(turn.id);
+      for (const item of turn.items) {
+        if (!item || typeof item !== 'object' || typeof item.type !== 'string' || !item.type
+          || (paginated && (typeof item.id !== 'string' || !item.id))
+          || (typeof item.id === 'string' && seenItems.has(item.id))) {
+          throw new Error('managed thread history contains incomplete, duplicate or invalid items');
+        }
+        if (item.type === 'agentMessage' && typeof item.text !== 'string') {
+          throw new Error('managed thread history contains an incomplete agent message');
+        }
+        if (item.type === 'userMessage') {
+          const legacyText = !paginated && typeof item.text === 'string' && item.content === undefined;
+          if (!legacyText && (!Array.isArray(item.content) || item.content.some((part: any) => !part || typeof part !== 'object'
+            || !['text', 'image', 'localImage', 'audio', 'localAudio', 'skill', 'mention'].includes(part.type)
+            || (part.type === 'text' && typeof part.text !== 'string')))) {
+            throw new Error('managed thread history contains an incomplete user message');
+          }
+        }
+        if (typeof item.id === 'string') seenItems.add(item.id);
+      }
+    }
+  }
+
+  /** Never treats unsupported/partial history as an empty, replayable thread. */
+  async managedThreadRead(threadId: string): Promise<ManagedThreadHistory> {
+    if (!this.managedThreadIds.has(threadId)) {
+      throw new Error('managed history requires an explicitly attached execution binding');
+    }
+    const metadata = await this.threadRead(threadId, false);
+    this.assertManagedThread(threadId, metadata);
+    const seenTurns = new Set<string>(), seenItems = new Set<string>();
+    if (metadata.historyMode === 'legacy') {
+      const thread = await this.threadRead(threadId, true);
+      this.assertManagedThread(threadId, thread);
+      if (thread.historyMode !== 'legacy') throw new Error('managed history mode changed during its read');
+      // The versioned legacy Turn contract defaults an omitted itemsView to full.
+      this.validateTurns(thread.turns, false, seenTurns, seenItems);
+      return { ...thread, historyComplete: true };
+    }
+    const turns: any[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | undefined;
+    let pages = 0, itemCount = 0;
+    for (;;) {
+      if (++pages > 1000) throw new Error('managed thread history exceeds the complete-read page limit');
+      // CLI 0.149.0 full explicitly includes all persisted items for each turn.
+      // The default summary/notLoaded views cannot prove a marker is absent.
+      const page = await this.rpc('thread/turns/list', { threadId, itemsView: 'full', sortDirection: 'asc', limit: 100,
+        ...(cursor === undefined ? {} : { cursor }) });
+      this.validateTurns(page?.data, true, seenTurns, seenItems);
+      turns.push(...page.data);
+      itemCount += page.data.reduce((sum: number, turn: any) => sum + turn.items.length, 0);
+      if (turns.length > 100000 || itemCount > 1000000) throw new Error('managed thread history exceeds the complete-read resource limit');
+      if (page.nextCursor === null || page.nextCursor === undefined) {
+        return { ...metadata, turns, historyComplete: true };
+      }
+      if (!page.data.length || typeof page.nextCursor !== 'string' || !page.nextCursor || seenCursors.has(page.nextCursor)) {
+        throw new Error('managed thread pagination did not advance');
+      }
+      seenCursors.add(page.nextCursor);
+      cursor = page.nextCursor;
+    }
   }
 
   async threadRead(threadId: string, includeTurns = true): Promise<any> {
@@ -214,6 +308,7 @@ export class CodexClient extends EventEmitter {
   }
 
   async close(): Promise<void> {
+    this.managedThreadIds.clear();
     if (this.child && this.child.exitCode === null) {
       this.child.stdin.end();
       const c = this.child;

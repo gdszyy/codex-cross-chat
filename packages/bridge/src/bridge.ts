@@ -85,7 +85,7 @@ export class Bridge {
   private nativeDelivery?: NativeTaskDelivery;
   private byAlias = new Map<string, Binding>();
   private byConv = new Map<string, Binding>();
-  private turnWaiters = new Map<string, (t: TurnTerminal) => void>();
+  private turnWaiters = new Map<string, { threadId: string; refresh: () => Promise<void> }>();
   private inFlight = new Set<string>();
   private stopping = false;
 
@@ -185,7 +185,9 @@ export class Bridge {
       cwd: this.opts.cwd,
       env: this.opts.codexEnv,
       shell: this.opts.codexShell,
-      experimentalApi: this.isQueuedDeliveryMode(),
+      // Managed bindings may retain their identity while history becomes
+      // paginated; full persisted-turn pagination requires explicit opt-in.
+      experimentalApi: true,
     });
     this.codex.on('notification', (n: any) => this.onNotification(n));
     this.codex.on('exit', (code: number) => this.log('warn', `codex exited (${code})`));
@@ -408,14 +410,10 @@ export class Bridge {
       const turn = n.params?.turn;
       if (!turn?.id) return;
       const waiter = this.turnWaiters.get(turn.id);
-      if (waiter) {
-        this.turnWaiters.delete(turn.id);
-        waiter({
-          turnId: turn.id,
-          status: turn.status === 'interrupted' ? 'interrupted' : turn.status === 'failed' ? 'failed' : 'completed',
-          text: lastAgentMessage(turn),
-          raw: turn,
-        });
+      if (waiter && waiter.threadId === n.params?.threadId) {
+        // Notifications may contain a summary or empty item stub. Only a
+        // complete persisted read of this same execution thread can settle it.
+        void waiter.refresh();
       }
     }
   }
@@ -505,7 +503,13 @@ export class Bridge {
       this.log('warn', `start report failed for ${requestId}: ${(e as Error).message}`);
     }
 
-    const terminal = await this.waitForTurn(turnId, binding.threadId!);
+    let terminal: TurnTerminal;
+    try { terminal = await this.waitForTurn(turnId, binding.threadId!); }
+    catch {
+      await this.state.finish(requestId, 'result_pending_verify');
+      this.log('warn', 'execution history remains unverified; no terminal result fabricated or request replayed');
+      return;
+    }
     const exec = terminal.status;
     await this.state.finish(requestId, exec);
     await this.submitWithOutbox(requestId, {
@@ -670,42 +674,61 @@ export class Bridge {
   }
 
   private waitForTurn(turnId: string, threadId: string): Promise<TurnTerminal> {
-    // T1-only: this thread was created by this bridge and is `historyMode:
-    // legacy`, which is the only class where thread/read returns turns
-    // (mechanism-design §0.5 wall). T2 paginated threads are never read.
+    // Execution authorization is separate from the history storage format.
+    // Display targets are never registered with managedThreadRead.
     const timeoutMs = this.opts.turnTimeoutMs ?? 120_000;
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       let done = false;
-      const finish = (t: TurnTerminal) => {
-        if (done) return;
+      let readable = false;
+      let activeRead: Promise<void> | undefined;
+      const cleanup = () => {
         done = true;
         this.turnWaiters.delete(turnId);
         clearInterval(poll);
         clearTimeout(timer);
+      };
+      const finish = (t: TurnTerminal) => {
+        if (done) return;
+        cleanup();
         resolve(t);
       };
-      this.turnWaiters.set(turnId, finish);
-      const poll = setInterval(async () => {
-        try {
-          const thread = await this.codex.threadRead(threadId, true);
-          const turn = (thread.turns ?? []).find((x: any) => x.id === turnId);
-          if (turn && turn.status && turn.status !== 'inProgress') {
-            finish({
-              turnId,
-              status: turn.status === 'interrupted' ? 'interrupted' : turn.status === 'failed' ? 'failed' : 'completed',
-              text: lastAgentMessage(turn),
-              raw: turn,
-            });
+      const refresh = (): Promise<void> => {
+        if (done) return Promise.resolve();
+        if (activeRead) return activeRead;
+        activeRead = (async () => {
+          try {
+            const thread = await this.codex.managedThreadRead(threadId);
+            if (done) return;
+            const turn = thread.turns.find((x: any) => x.id === turnId);
+            readable = Boolean(turn && ['completed', 'failed', 'interrupted', 'inProgress'].includes(turn.status));
+            if (turn && ['completed', 'failed', 'interrupted'].includes(turn.status)) {
+              finish({ turnId, status: turn.status, text: lastAgentMessage(turn), raw: turn });
+            }
+          } catch {
+            readable = false;
+          } finally {
+            activeRead = undefined;
           }
-        } catch {
-          /* keep polling */
-        }
-      }, 300);
+        })();
+        return activeRead;
+      };
+      this.turnWaiters.set(turnId, { threadId, refresh });
+      const poll = setInterval(() => void refresh(), 300);
       const timer = setTimeout(() => {
-        // §5.2: no expected report → keep the execution terminal state and mark
-        // the result as missing rather than claiming business completion.
-        finish({ turnId, status: 'failed', text: '', raw: { status: 'timeout' } });
+        void (async () => {
+          await refresh();
+          if (done) return;
+          if (readable) {
+            // Preserve the existing explicit timeout/missing-result report
+            // only when full history positively shows this turn still running.
+            finish({ turnId, status: 'failed', text: '', raw: { status: 'timeout' } });
+          } else {
+            cleanup();
+            reject(new Error('managed execution terminal history is unavailable'));
+          }
+        })();
       }, timeoutMs);
+      void refresh();
     });
   }
 
@@ -722,9 +745,9 @@ export class Bridge {
       }
       if (rec.turn_id) {
         // We already know the turn: just read its terminal state.
-        const thread = await this.codex.threadRead(binding.threadId, true).catch(() => null);
+        const thread = await this.codex.managedThreadRead(binding.threadId).catch(() => null);
         const turn = thread?.turns?.find((x: any) => x.id === rec.turn_id);
-        if (turn && turn.status && turn.status !== 'inProgress') {
+        if (turn && ['completed', 'failed', 'interrupted'].includes(turn.status)) {
           const status = turn.status === 'interrupted' ? 'interrupted' : turn.status === 'failed' ? 'failed' : 'completed';
           await this.state.finish(rec.request_id, status);
           await this.submitWithOutbox(rec.request_id, {
@@ -734,7 +757,7 @@ export class Bridge {
             turn_id: rec.turn_id,
             body: lastAgentMessage(turn) || `(recovered; status=${status})`,
             evidence: `codex-thread:${binding.threadId}#turn:${rec.turn_id}`,
-            result_missing: status !== 'completed',
+            result_missing: status !== 'completed' || !lastAgentMessage(turn),
           });
           result.adopted++;
         } else {
@@ -744,8 +767,8 @@ export class Bridge {
         continue;
       }
       // status 'starting' with no turnId: search thread history by marker.
-      const thread = await this.codex.threadRead(binding.threadId, true).catch(() => null);
-      if (!thread || thread.id !== binding.threadId || thread.historyMode !== 'legacy' || !Array.isArray(thread.turns)) {
+      const thread = await this.codex.managedThreadRead(binding.threadId).catch(() => null);
+      if (!thread || thread.id !== binding.threadId || thread.historyComplete !== true || !Array.isArray(thread.turns)) {
         // A failed read is not positive evidence of an empty history. Starting
         // again here could duplicate work; require human reconciliation.
         await this.state.finish(rec.request_id, 'result_pending_verify');
@@ -754,7 +777,11 @@ export class Bridge {
         continue;
       }
       const matches = thread.turns.filter((t: any) =>
-        (t.items ?? []).some((i: any) => typeof i.text === 'string' && i.text.includes(rec.marker)),
+        (t.items ?? []).some((i: any) => i.type === 'userMessage' && (
+          (typeof i.text === 'string' && i.text.includes(rec.marker))
+          || (Array.isArray(i.content) && i.content.some((part: any) => part.type === 'text'
+            && typeof part.text === 'string' && part.text.includes(rec.marker)))
+        )),
       );
       if (matches.length === 1) {
         const turn = matches[0];
@@ -772,6 +799,7 @@ export class Bridge {
           turn_id: turn.id,
           body: lastAgentMessage(turn) || `(adopted; status=${status})`,
           evidence: `codex-thread:${binding.threadId}#turn:${turn.id}`,
+          result_missing: status !== 'completed' || !lastAgentMessage(turn),
         });
         result.adopted++;
       } else if (matches.length === 0) {

@@ -188,7 +188,9 @@ Body:   {
 | 心跳 / presence | 有（30 s 心跳；`presence.mode=heartbeat`） | **无**（`presence.mode=last_pull_at`、`heartbeat=false`、`stale=true`） |
 | 投递 | push（结果成为新轮次） | `delivery_mode=manual_pull` |
 | 能做什么 | 收任务、自动执行、回传结果（对话侧手工回传见 §4.1）；结果可自动 push 回原对话 | 发出请求、查状态、读结果；**每次被打开时主动 `relay_inbox`**（无自动唤醒） |
-| 不能做什么 | —— | **首版不支持把既有桌面对话自动接入执行**（上游对 paginated 线程 `read/resume` fail closed；见 `docs/m1-compat-report.md` §6.1、对账表 C1） |
+| 不能做什么 | —— | **不支持把任意既有桌面对话自动接管为执行线程**；桌面呈现与托管执行保持精确、独立绑定 |
+
+历史格式与服务等级分别核对：已有 T1 执行线程也可能采用 paginated 历史。兼容修复会完整读取并恢复其原绑定，不改变 T1/T2 身份；处理步骤见 [线程恢复](thread-recovery.md)。旧兼容报告记录的是当时结果，不应据此把当前分页格式等同于不可恢复。
 
 **当前结论口径**：业务执行仍由桥接的 T1 线程承担，不自动接管 T2 桌面线程。v0.2.3 已通过真实本机原生接收器，把真实来信/结果报告显示在准确绑定的既有桌面对话中；这项呈现能力不改变 T2 的 manual_pull 身份或原执行历史，详见 [native_task](native-task-messages.md)。
 

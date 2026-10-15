@@ -43,7 +43,7 @@ const safeThread = (t: any) => ({ id: t?.id, historyMode: t?.historyMode, epheme
   status: t?.status, turns: Array.isArray(t?.turns) ? t.turns.length : null });
 async function session() {
   const client = new CodexClient({ command, args: commandArgs, cwd,
-    env: { CODEX_HOME: probeHome, OPENAI_API_KEY: '', CODEX_API_KEY: '' } });
+    env: { CODEX_HOME: probeHome, OPENAI_API_KEY: '', CODEX_API_KEY: '' }, experimentalApi: true });
   clients.add(client);
   try { await client.start(); }
   catch (e) { await client.close(); throw e; }

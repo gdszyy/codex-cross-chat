@@ -133,6 +133,7 @@ rl.on('line', (line) => {
             id: t.id,
             source: 'vscode',
             historyMode: 'legacy',
+            ephemeral: false,
             modelProvider: 'openai',
             model: t.model,
             name: t.name,
@@ -157,7 +158,7 @@ rl.on('line', (line) => {
       case 'thread/resume': {
         const t = threads.get(params?.threadId);
         if (!t) return replyErr(id, -32602, 'thread not found');
-        return reply(id, { thread: { id: t.id, historyMode: 'legacy', model: t.model, name: t.name ?? null } });
+        return reply(id, { thread: { id: t.id, historyMode: 'legacy', ephemeral: false, canAcceptDirectInput: true, model: t.model, name: t.name ?? null } });
       }
       case 'thread/read': {
         const t = threads.get(params?.threadId);
@@ -167,6 +168,7 @@ rl.on('line', (line) => {
           thread: {
             id: t.id,
             historyMode: 'legacy',
+            ephemeral: false,
             model: t.model,
             name: t.name ?? null,
             turns: includeTurns ? t.turns.map((x) => ({ ...x })) : undefined,
