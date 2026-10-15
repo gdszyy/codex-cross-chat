@@ -18,7 +18,8 @@ export interface BridgeConfig {
   state_dir?: string;
   turn_timeout_ms?: number;
   heartbeat_ms?: number;
-  result_delivery_mode?: 'push_turn' | 'manual_read' | 'desktop_queue';
+  result_delivery_mode?: 'push_turn' | 'manual_read' | 'desktop_queue' | 'native_task';
+  native_inbox_dir?: string;
   bindings?: Binding[];
   pairing?: { code_file?: string; alias: string; role: string; task: string; owner_label?: string };
   pairing_receipts?: { pairing_id: string; peer_conv_id: string; conv_id: string; thread_id: string }[];
@@ -41,6 +42,30 @@ function outsideGit(file: string): void {
     if (parent === dir) return;
     dir = parent;
   }
+}
+
+/** Resolve existing ancestors too, so a directory junction cannot hide an unsafe inbox. */
+function nativeInboxPath(directory: string): string {
+  if (!path.isAbsolute(directory)) throw new Error('native_inbox_dir must be an absolute path');
+  directory = outsideCodex(directory);
+  outsideGit(path.join(directory, 'native-job.json'));
+  let ancestor = directory;
+  const suffix: string[] = [];
+  while (!fs.existsSync(ancestor)) {
+    suffix.unshift(path.basename(ancestor));
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) throw new Error('native inbox directory has no accessible filesystem ancestor');
+    ancestor = parent;
+  }
+  const canonical = outsideCodex(path.join(fs.realpathSync(ancestor), ...suffix));
+  const codexDir = path.join(os.homedir(), '.codex');
+  const canonicalCodex = fs.existsSync(codexDir) ? fs.realpathSync(codexDir) : codexDir;
+  const rel = path.relative(canonicalCodex, canonical);
+  if (!rel || (!rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel))) {
+    throw new Error('native inbox directory must live outside ~/.codex');
+  }
+  outsideGit(path.join(canonical, 'native-job.json'));
+  return canonical;
 }
 
 /** Create privately before writing secrets; replacement never exposes a partial receipt. */
@@ -75,18 +100,23 @@ export function readConfig(file: string): BridgeConfig {
 export function configOptions(file: string, codeFile?: string): BridgeOptions & { stateDir: string } {
   file = outsideCodex(file);
   const raw = readConfig(file);
-  if (raw.result_delivery_mode !== undefined && !['push_turn', 'manual_read', 'desktop_queue'].includes(raw.result_delivery_mode)) {
-    throw new Error('result_delivery_mode must be push_turn, manual_read or desktop_queue');
+  if (raw.result_delivery_mode !== undefined && !['push_turn', 'manual_read', 'desktop_queue', 'native_task'].includes(raw.result_delivery_mode)) {
+    throw new Error('result_delivery_mode must be push_turn, manual_read, desktop_queue or native_task');
   }
-  if (raw.result_delivery_mode === 'desktop_queue') {
-    if (raw.pairing || !(raw.bindings?.length)) throw new Error('desktop_queue requires existing paired bindings');
+  if (raw.result_delivery_mode === 'desktop_queue' || raw.result_delivery_mode === 'native_task') {
+    if (raw.pairing || !(raw.bindings?.length)) throw new Error('queued delivery requires existing paired bindings');
     const aliases = new Set<string>(), convs = new Set<string>(), threads = new Set<string>();
     for (const binding of raw.bindings) {
       if (!binding.threadId || !binding.convId || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(binding.desktopThreadId ?? '')) {
-        throw new Error('desktop_queue requires each existing threadId/convId and an exact desktopThreadId UUID');
+        throw new Error('queued delivery requires each existing threadId/convId and an exact desktopThreadId UUID');
+      }
+      if (raw.result_delivery_mode === 'native_task'
+        && (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(binding.nativeReceiverThreadId ?? '')
+          || binding.nativeReceiverThreadId!.toLowerCase() === binding.desktopThreadId!.toLowerCase())) {
+        throw new Error('native_task requires a distinct exact nativeReceiverThreadId UUID for each desktop target');
       }
       if (aliases.has(binding.alias) || convs.has(binding.convId) || threads.has(binding.threadId)) {
-        throw new Error('desktop_queue requires unique aliases, conversation IDs and execution threads');
+        throw new Error('queued delivery requires unique aliases, conversation IDs and execution threads');
       }
       aliases.add(binding.alias); convs.add(binding.convId); threads.add(binding.threadId);
     }
@@ -99,6 +129,8 @@ export function configOptions(file: string, codeFile?: string): BridgeOptions & 
   const code = pairFile ? fs.readFileSync(pairFile, 'utf8').trim() : undefined;
   if (raw.pairing && !code) throw new Error('pairing requires a nonempty --pair-code-file or pairing.code_file');
   const stateDir = outsideCodex(raw.state_dir ? relative(raw.state_dir) : file + '.state');
+  const nativeInboxDir = raw.result_delivery_mode === 'native_task'
+    ? nativeInboxPath(raw.native_inbox_dir ?? path.join(stateDir, 'native-inbox')) : undefined;
   const identity = (cfg: BridgeConfig) => JSON.stringify({ relay: cfg.relay_url, profile: cfg.profile ?? 'default',
     state: outsideCodex(cfg.state_dir ? relative(cfg.state_dir) : file + '.state'),
     device: cfg.device_token ?? null, deviceId: cfg.device_id ?? null, bindings: cfg.bindings ?? [],
@@ -115,6 +147,7 @@ export function configOptions(file: string, codeFile?: string): BridgeOptions & 
     model: raw.model ?? 'gpt-5.6-luna', cwd: raw.cwd ?? process.cwd(), bindings: raw.bindings ?? [],
     allowSources: raw.allow_sources, turnTimeoutMs: raw.turn_timeout_ms, heartbeatMs: raw.heartbeat_ms, stateDir,
     resultDeliveryMode: raw.result_delivery_mode,
+    nativeInboxDir,
     ...(raw.pairing ? { pairing: { code: code!, alias: raw.pairing.alias, role: raw.pairing.role,
       task: raw.pairing.task, ownerLabel: raw.pairing.owner_label } } : {}),
     preparePairing: async () => {

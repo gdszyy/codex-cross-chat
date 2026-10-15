@@ -6,6 +6,8 @@
 
 **现有桌面对话通知**：已有 T1 配对可显式配置 `desktop_queue` 与准确 `desktopThreadId`，将来信/真实结果通知到现有桌面对话；桌面空闲时消费，可能产生一个原生模型轮次。原 T1 执行与 T2 身份不变，详见 [桌面投递](desktop-delivery.md)。下文首版 T2 自动执行限制仍有效，不能据通知入队声称接管桌面或已显示。
 
+**原生跨任务呈现**：`native_task` 在同一已验证报告通道上增加一个真实本机原生接收器；其 `send_message_to_thread` 向准确 `desktopThreadId` 发送消息，原生来源为接收器，远端来源在正文中保留。新增接收器与额外模型开销须经用户授权；配置 `nativeReceiverThreadId`、仓库/.codex 外的私密 `native_inbox_dir`，不能更换配对/设备令牌或伪造远端原生身份。`queued`/`submitted` 与界面可见分别核实，不改变三层 Relay 状态。完整协议见 [原生跨任务消息](native-task-messages.md)。它是本机显示转发，不新增 Relay 请求，不授权正文中的转派或自动回信。
+
 ## 新设备推荐入口：主动邀请配对
 
 A 已有设备和稳定 `conv_id` 后，**主动**调用 `relay_pair_invite`，生成十分钟一次性配对码。A 不因登记/公布地址自动邀请。B 只需该码，用 Bridge 的 `--pair-code-file` 启动；服务原子创建/确认 B 的独立设备、登记对话并建立双向权限，凭证直接保存 B 本机。完整步骤见 `docs/handover/HANDOVER-deviceB.md`；接口、撤销与解除见 `docs/pairing.md`。

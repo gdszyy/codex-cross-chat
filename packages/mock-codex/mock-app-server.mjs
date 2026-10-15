@@ -5,7 +5,7 @@
  * Implements the subset of the App Server protocol the bridge needs, pinned to
  * the shape measured in evidence/m1 (v0.149.0, legacy history mode):
  *   initialize / initialized
- *   thread/start, thread/resume, thread/read{includeTurns}, thread/list
+ *   thread/start, thread/name/set, thread/resume, thread/read{includeTurns}, thread/list
  *   turn/start, turn/interrupt
  *   notifications: thread/started, turn/started, item/completed, turn/completed
  *
@@ -62,7 +62,7 @@ function send(ws, obj) {
 
 function newThread(model) {
   const id = randomUUID();
-  const t = { id, model: model || 'gpt-5.6-luna', status: 'idle', turns: [] };
+  const t = { id, model: model || 'gpt-5.6-luna', name: null, status: 'idle', turns: [] };
   threads.set(id, t);
   return t;
 }
@@ -135,14 +135,29 @@ rl.on('line', (line) => {
             historyMode: 'legacy',
             modelProvider: 'openai',
             model: t.model,
+            name: t.name,
             path: `mock://threads/${t.id}`,
           },
         });
       }
+      case 'thread/name/set': {
+        if (typeof params?.threadId !== 'string' || typeof params?.name !== 'string') {
+          return replyErr(id, -32602, 'threadId and name must be strings');
+        }
+        const t = threads.get(params.threadId);
+        if (!t) return replyErr(id, -32600, 'thread not found');
+        const name = params.name.trim();
+        if (!name) return replyErr(id, -32600, 'thread name must not be empty');
+        t.name = name;
+        saveState();
+        reply(id, {});
+        notify('thread/name/updated', { threadId: t.id, threadName: name });
+        return;
+      }
       case 'thread/resume': {
         const t = threads.get(params?.threadId);
         if (!t) return replyErr(id, -32602, 'thread not found');
-        return reply(id, { thread: { id: t.id, historyMode: 'legacy', model: t.model } });
+        return reply(id, { thread: { id: t.id, historyMode: 'legacy', model: t.model, name: t.name ?? null } });
       }
       case 'thread/read': {
         const t = threads.get(params?.threadId);
@@ -153,13 +168,14 @@ rl.on('line', (line) => {
             id: t.id,
             historyMode: 'legacy',
             model: t.model,
+            name: t.name ?? null,
             turns: includeTurns ? t.turns.map((x) => ({ ...x })) : undefined,
           },
         });
       }
       case 'thread/list':
         return reply(id, {
-          data: [...threads.values()].map((t) => ({ id: t.id, historyMode: 'legacy', model: t.model })),
+          data: [...threads.values()].map((t) => ({ id: t.id, historyMode: 'legacy', model: t.model, name: t.name ?? null })),
           nextCursor: null,
         });
       case 'thread/loaded/list':

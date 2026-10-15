@@ -272,6 +272,7 @@ describe('§5.3 crash window', () => {
 
   it('persists the WS event cursor across restarts', async () => {
     const stateDir = path.join(TMP, 'cursor-' + Date.now());
+    const mockState = path.join(stateDir, 'mock.json');
     const env = trackEnv(await startRelay());
     const devA = await registerDevice(env);
     const devB = await registerDevice(env);
@@ -283,6 +284,7 @@ describe('§5.3 crash window', () => {
         bindings: [{ alias: 'beta', role: 'worker', task: 'execute', project: 'codex-relay' }],
         cwd: process.cwd(),
         state: shared.state,
+        mockStateFile: mockState,
       }),
     );
     const bindB = b0.bindings.get('beta')!;
@@ -308,8 +310,8 @@ describe('§5.3 crash window', () => {
     }, 20_000, 'cursor persisted');
     expect(cursor).toBeGreaterThan(0);
 
-    // Restart with the same state: the persisted cursor must survive and be
-    // loaded (so the connection resumes instead of replaying from zero).
+    // Both the cursor store and the mock's durable thread history survive.
+    // An empty replacement mock must not impersonate a recoverable thread.
     await b0.stop();
     const b2 = trackBridge(
       await startBridge(env, {
@@ -317,6 +319,7 @@ describe('§5.3 crash window', () => {
         bindings: [{ alias: 'beta', role: 'worker', task: 'execute', project: 'codex-relay' }],
         cwd: process.cwd(),
         state: shared.state,
+        mockStateFile: mockState,
       }),
     );
     expect(await b2.state.getCursor()).toBe(cursor);

@@ -15,8 +15,8 @@ async function main(): Promise<void> {
     throw new Error('--replay-desktop-request requires an exact request_id');
   }
   const opts = configOptions(cfgPath, value('--pair-code-file'));
-  if (replayRequest && opts.resultDeliveryMode !== 'desktop_queue') {
-    throw new Error('--replay-desktop-request requires desktop_queue mode');
+  if (replayRequest && !['desktop_queue', 'native_task'].includes(opts.resultDeliveryMode ?? '')) {
+    throw new Error('--replay-desktop-request requires desktop_queue or native_task mode');
   }
   await fs.promises.mkdir(opts.stateDir, { recursive: true, mode: 0o700 });
   const lifecycleFile = path.join(opts.stateDir, 'bridge.lifecycle.jsonl');
@@ -93,6 +93,9 @@ async function main(): Promise<void> {
     if (replayRequest) {
       const receipt = await bridge.replayDesktopRequest(replayRequest);
       console.log('[bridge] desktop replay ' + JSON.stringify({ status: receipt.status,
+        delivery_mode: receipt.deliveryMode ?? 'desktop_queue', native_status: receipt.nativeStatus,
+        native_job_id: receipt.nativeJobId, desktop_thread_id: receipt.desktopThreadId,
+        receiver_thread_id: receipt.receiverThreadId,
         request_id: receipt.requestId, result_id: receipt.resultId, local_conv_id: receipt.localConvId,
         thread_id: receipt.threadId, queued_submission_id: receipt.queuedSubmissionId,
         client_user_message_id: receipt.clientUserMessageId }));
