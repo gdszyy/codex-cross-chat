@@ -1,0 +1,17 @@
+{
+  "relay_url": "https://codex-cross-chat-production.up.railway.app",
+  "profile": "default",
+  "execution_mode": "desktop_inbox",
+  "codex_command": "<与当前桌面历史兼容的公开App Server可执行路径>",
+  "codex_args": ["app-server", "--stdio"],
+  "cwd": "<本机有效工作目录>",
+  "state_dir": "<仓库和.codex之外的绝对状态目录>",
+  "bindings": [],
+  "pairing": {
+    "alias": "device-b",
+    "role": "worker",
+    "task": "在原接入对话处理配对方来信",
+    "owner_label": "device-b",
+    "desktopThreadId": "<本机原接入桌面对话准确UUID>"
+  }
+}

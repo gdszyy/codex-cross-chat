@@ -19,9 +19,10 @@ export interface BridgeConfig {
   turn_timeout_ms?: number;
   heartbeat_ms?: number;
   result_delivery_mode?: 'push_turn' | 'manual_read' | 'desktop_queue' | 'native_task';
+  execution_mode?: 'managed' | 'desktop_inbox';
   native_inbox_dir?: string;
   bindings?: Binding[];
-  pairing?: { code_file?: string; alias: string; role: string; task: string; owner_label?: string };
+  pairing?: { code_file?: string; alias: string; role: string; task: string; owner_label?: string; desktopThreadId?: string };
   pairing_receipts?: { pairing_id: string; peer_conv_id: string; conv_id: string; thread_id: string }[];
 }
 
@@ -100,6 +101,25 @@ export function readConfig(file: string): BridgeConfig {
 export function configOptions(file: string, codeFile?: string): BridgeOptions & { stateDir: string } {
   file = outsideCodex(file);
   const raw = readConfig(file);
+  if (raw.execution_mode !== undefined && !['managed', 'desktop_inbox'].includes(raw.execution_mode)) {
+    throw new Error('execution_mode must be managed or desktop_inbox');
+  }
+  if (raw.execution_mode === 'desktop_inbox') {
+    const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+    if (raw.result_delivery_mode !== undefined || raw.native_inbox_dir || raw.bindings?.some((b) => b.nativeReceiverThreadId)) {
+      throw new Error('desktop_inbox requires removal of legacy result_delivery_mode and receiver settings');
+    }
+    if (raw.pairing) {
+      if (!uuid.test(raw.pairing.desktopThreadId ?? '')) throw new Error('desktop_inbox pairing requires an existing exact desktopThreadId');
+    } else if (!raw.device_token || !raw.bindings?.length || raw.bindings.some((b) =>
+      !b.alias || !b.convId || !b.threadId || !uuid.test(b.desktopThreadId ?? ''))) {
+      throw new Error('desktop_inbox requires existing identity bindings and exact desktop targets');
+    }
+    for (const field of ['alias', 'convId', 'threadId', 'desktopThreadId'] as const) {
+      const values = (raw.bindings ?? []).map((b) => b[field]);
+      if (new Set(values).size !== values.length) throw new Error('desktop_inbox bindings and targets must be unique');
+    }
+  }
   if (raw.result_delivery_mode !== undefined && !['push_turn', 'manual_read', 'desktop_queue', 'native_task'].includes(raw.result_delivery_mode)) {
     throw new Error('result_delivery_mode must be push_turn, manual_read, desktop_queue or native_task');
   }
@@ -133,9 +153,10 @@ export function configOptions(file: string, codeFile?: string): BridgeOptions & 
     ? nativeInboxPath(raw.native_inbox_dir ?? path.join(stateDir, 'native-inbox')) : undefined;
   const identity = (cfg: BridgeConfig) => JSON.stringify({ relay: cfg.relay_url, profile: cfg.profile ?? 'default',
     state: outsideCodex(cfg.state_dir ? relative(cfg.state_dir) : file + '.state'),
-    device: cfg.device_token ?? null, deviceId: cfg.device_id ?? null, bindings: cfg.bindings ?? [],
+    device: cfg.device_token ?? null, deviceId: cfg.device_id ?? null, bindings: cfg.bindings ?? [], execution: cfg.execution_mode ?? 'managed',
     pairing: cfg.pairing ? { alias: cfg.pairing.alias, role: cfg.pairing.role, task: cfg.pairing.task,
-      owner: cfg.pairing.owner_label ?? null, codeFile: cfg.pairing.code_file ? relative(cfg.pairing.code_file) : null } : null });
+      owner: cfg.pairing.owner_label ?? null, desktop: cfg.pairing.desktopThreadId ?? null,
+      codeFile: cfg.pairing.code_file ? relative(cfg.pairing.code_file) : null } : null });
   const initialIdentity = identity(raw);
   const unchanged = (next: BridgeConfig) => {
     if (identity(next) !== initialIdentity) throw new Error('pairing config identity changed; inspect local/relay receipts before retry');
@@ -147,9 +168,10 @@ export function configOptions(file: string, codeFile?: string): BridgeOptions & 
     model: raw.model ?? 'gpt-5.6-luna', cwd: raw.cwd ?? process.cwd(), bindings: raw.bindings ?? [],
     allowSources: raw.allow_sources, turnTimeoutMs: raw.turn_timeout_ms, heartbeatMs: raw.heartbeat_ms, stateDir,
     resultDeliveryMode: raw.result_delivery_mode,
+    executionMode: raw.execution_mode,
     nativeInboxDir,
     ...(raw.pairing ? { pairing: { code: code!, alias: raw.pairing.alias, role: raw.pairing.role,
-      task: raw.pairing.task, ownerLabel: raw.pairing.owner_label } } : {}),
+      task: raw.pairing.task, ownerLabel: raw.pairing.owner_label, desktopThreadId: raw.pairing.desktopThreadId } } : {}),
     preparePairing: async () => {
       const next = readConfig(file);
       unchanged(next);

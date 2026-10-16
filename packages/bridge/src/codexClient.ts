@@ -1,7 +1,8 @@
 /**
  * Codex App Server adapter: spawns the pinned CLI over stdio and speaks
- * JSON-RPC 2.0 (newline-delimited). Pins CLI 0.149.0 (mechanism-design §10 D13);
- * only touches App Server interfaces — never writes ~/.codex (R3).
+ * JSON-RPC 2.0 (newline-delimited). Uses versioned public App Server APIs;
+ * desktop history requires a runtime compatible with that desktop's schema.
+ * Consumers preflight actual capabilities; never writes ~/.codex (R3).
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import readline from 'node:readline';
@@ -249,7 +250,21 @@ export class CodexClient extends EventEmitter {
       this.validateTurns(thread.turns, false, seenTurns, seenItems);
       return { ...thread, historyComplete: true };
     }
+    return this.readPaginatedHistory(threadId, metadata);
+  }
+
+  /** Read an explicitly configured desktop target without attaching a writer. */
+  async desktopThreadRead(threadId: string): Promise<ManagedThreadHistory> {
+    const metadata = await this.threadRead(threadId, false);
+    if (metadata?.id !== threadId || metadata.ephemeral !== false || metadata.historyMode !== 'paginated') {
+      throw new Error('desktop history identity or persistence differs from the configured target');
+    }
+    return this.readPaginatedHistory(threadId, metadata);
+  }
+
+  private async readPaginatedHistory(threadId: string, metadata: any): Promise<ManagedThreadHistory> {
     const turns: any[] = [];
+    const seenTurns = new Set<string>(), seenItems = new Set<string>();
     const seenCursors = new Set<string>();
     let cursor: string | undefined;
     let pages = 0, itemCount = 0;

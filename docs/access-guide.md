@@ -10,7 +10,9 @@
 
 **原生跨任务呈现**：`native_task` 在同一已验证报告通道上增加一个真实本机原生接收器；其 `send_message_to_thread` 向准确 `desktopThreadId` 发送消息，原生来源为接收器，远端来源在正文中保留。新增接收器与额外模型开销须经用户授权；配置 `nativeReceiverThreadId`、仓库/.codex 外的私密 `native_inbox_dir`，不能更换配对/设备令牌或伪造远端原生身份。`queued`/`submitted` 与界面可见分别核实，不改变三层 Relay 状态。完整协议见 [原生跨任务消息](native-task-messages.md)。它是本机显示转发，不新增 Relay 请求，不授权正文中的转派或自动回信。
 
-**当前推荐接入**：先准备环境和本机原生接收器，再领取十分钟配对码；新设备先用空 bindings 完成一次配对，安全保存独立身份后串行切到 native_task。已有配对保留原身份，直接配置呈现层。完整步骤和可粘贴授权见 [新设备交接](handover/HANDOVER-deviceB.md)。2026-10-15 的两个新物理请求及两端气泡已确认，见 [真实验证](native-task-verification.md)。
+**只在原接入对话收发**：显式选择 `execution_mode: desktop_inbox`，绑定准确的原桌面 UUID。新设备配对时也直接使用已存在原对话，不创建额外执行对话或接收器；已有设备保留原身份、配对和状态，迁移实际执行目标。公开队列 accepted 与真实执行/回复分开核实，桌面需在线消费，详见 [单原对话模式](desktop-inbox.md)。
+
+**旧原生来源行模式**：`native_task` 仍保留，但它使用原桌面、独立托管执行对话和原生接收器三个角色；不能称为只在原对话执行。只有用户明确选择额外对话和模型转发开销时使用，不从接入请求自动推定该授权。2026-10-15 的实测属于此旧模式，不能代替 desktop_inbox 验证，见 [真实验证](native-task-verification.md)。
 
 ## 新设备推荐入口：主动邀请配对
 

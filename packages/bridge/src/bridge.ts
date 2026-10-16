@@ -10,15 +10,16 @@
  *  - On result.available for a conversation this bridge owns, it *pushes* the
  *    result into that conversation as a new turn (T1 delivery).
  *
- * Execution stays on durable legacy T1 threads. Explicit queued-delivery modes
- * use metadata reads and public queue APIs for the display target or native
- * receiver; Bridge never resumes those targets or starts their queued turns.
+ * Managed execution attaches only explicitly bound durable threads, independent
+ * of history format. desktop_inbox queues to the existing desktop owner and
+ * observes complete history without resuming it or starting its queued turns.
  */
 import { CodexClient, lastAgentMessage, type TurnTerminal } from './codexClient.js';
 import { LocalState, type DispatchRecord } from './state.js';
 import { RelayClient } from './relayClient.js';
 import { DesktopDelivery, DesktopDeliveryError, type DesktopDeliveryReceipt } from './desktopDelivery.js';
 import { NativeTaskDelivery } from './nativeDelivery.js';
+import { DesktopInbox } from './desktopInbox.js';
 import type { WsEvent } from '@relay/protocol';
 
 export interface Binding {
@@ -36,7 +37,7 @@ export interface Binding {
 export interface BridgeOptions {
   relayUrl: string;
   deviceToken?: string;
-  pairing?: { code: string; alias: string; role: string; task: string; ownerLabel?: string };
+  pairing?: { code: string; alias: string; role: string; task: string; ownerLabel?: string; desktopThreadId?: string };
   /** Must atomically persist the credential + full binding before any WS opens. */
   persistPairing?: (receipt: PairingReceipt) => Promise<void>;
   preparePairing?: () => Promise<void>;
@@ -55,6 +56,8 @@ export interface BridgeOptions {
   maxBackoffMs?: number;
   /** Queue acceptance alone does not confirm the report is visible in its target UI. */
   resultDeliveryMode?: 'push_turn' | 'manual_read' | 'desktop_queue' | 'native_task';
+  /** Registered threadId remains identity; desktopThreadId is the existing owner-run executor. */
+  executionMode?: 'managed' | 'desktop_inbox';
   nativeInboxDir?: string;
 }
 
@@ -83,6 +86,9 @@ export class Bridge {
   private relay!: RelayClient;
   private desktopDelivery?: DesktopDelivery;
   private nativeDelivery?: NativeTaskDelivery;
+  private desktopInbox?: DesktopInbox;
+  private desktopPoll?: NodeJS.Timeout;
+  private desktopScan?: Promise<void>;
   private byAlias = new Map<string, Binding>();
   private byConv = new Map<string, Binding>();
   private turnWaiters = new Map<string, { threadId: string; refresh: () => Promise<void> }>();
@@ -111,7 +117,10 @@ export class Bridge {
 
   private initializeDelivery(state: LocalState): void {
     const log = (level: string, message: string) => this.log(level, message);
-    if (this.opts.resultDeliveryMode === 'native_task') {
+    if (this.opts.executionMode === 'desktop_inbox') {
+      this.desktopInbox = new DesktopInbox(this.codex, state);
+      this.desktopDelivery = new DesktopDelivery(this.codex, state, log);
+    } else if (this.opts.resultDeliveryMode === 'native_task') {
       this.nativeDelivery = new NativeTaskDelivery(this.codex, state, this.opts.nativeInboxDir!, log);
     } else if (this.opts.resultDeliveryMode === 'desktop_queue') {
       this.desktopDelivery = new DesktopDelivery(this.codex, state, log);
@@ -127,6 +136,32 @@ export class Bridge {
   }
 
   private validateDesktopBindings(): void {
+    if (this.opts.executionMode !== undefined && !['managed', 'desktop_inbox'].includes(this.opts.executionMode)) {
+      throw new Error('unsupported execution mode');
+    }
+    if (this.opts.executionMode === 'desktop_inbox') {
+      const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+      if (this.opts.resultDeliveryMode !== undefined || this.opts.nativeInboxDir
+        || this.opts.bindings.some((b) => b.nativeReceiverThreadId)) {
+        throw new Error('desktop_inbox owns direct input/report delivery; remove legacy result delivery and receiver settings');
+      }
+      if (this.opts.pairing) {
+        if (this.opts.bindings.length || !uuid.test(this.opts.pairing.desktopThreadId ?? '')) {
+          throw new Error('desktop_inbox pairing requires an existing exact desktopThreadId and empty bindings');
+        }
+      } else {
+        if (!this.opts.deviceToken || !this.opts.bindings.length || this.opts.bindings.some((b) =>
+          !b.alias || !b.convId || !b.threadId || !uuid.test(b.desktopThreadId ?? ''))) {
+          throw new Error('desktop_inbox requires existing identity bindings and exact desktop targets');
+        }
+        for (const field of ['alias', 'convId', 'threadId', 'desktopThreadId'] as const) {
+          if (new Set(this.opts.bindings.map((b) => b[field])).size !== this.opts.bindings.length) {
+            throw new Error('desktop_inbox requires unique identities and desktop targets');
+          }
+        }
+      }
+      return;
+    }
     if (!this.isQueuedDeliveryMode()) return;
     if (!this.opts.deviceToken || this.opts.pairing || !this.opts.bindings.length
       || this.opts.bindings.some((b) => !b.alias || !b.threadId || !b.convId || !b.desktopThreadId)) {
@@ -179,6 +214,12 @@ export class Bridge {
   async start(state: LocalState): Promise<void> {
     this.state = state;
     this.validateDesktopBindings();
+    if (this.opts.executionMode === 'desktop_inbox') {
+      const discovery = new RelayClient({ baseUrl: this.opts.relayUrl });
+      if (!await discovery.supportsDesktopInbox()) {
+        throw new Error('Relay desktop_inbox capability is unavailable; no claim, grant or queue add was attempted');
+      }
+    }
     this.codex = new CodexClient({
       command: this.opts.codexCommand,
       args: this.opts.codexArgs,
@@ -197,7 +238,7 @@ export class Bridge {
     // C5: never hard-code the model — read what this CLI actually offers and
     // flag a mismatch (thread/start accepts any string, so a wrong model only
     // surfaces at turn time; see m1-compat-report §3 局限 1).
-    const models = await this.codex.modelList().catch(() => [] as string[]);
+    const models = this.desktopInbox ? [] : await this.codex.modelList().catch(() => [] as string[]);
     if (models.length) {
       this.log('info', `model/list: ${models.join(', ')}`);
       if (this.opts.model && !models.includes(this.opts.model)) {
@@ -245,6 +286,15 @@ export class Bridge {
 
     // 4) Connect the device channel (push + heartbeat).
     this.relay.connect();
+    if (this.desktopInbox) {
+      this.desktopPoll = setInterval(() => {
+        if (this.stopping || this.desktopScan) return;
+        this.desktopScan = this.safe(async () => {
+          await this.reconcile();
+          await this.flushOutbox();
+        }, 'desktopInboxObserve').finally(() => { this.desktopScan = undefined; });
+      }, 1000);
+    }
   }
 
   /**
@@ -277,6 +327,20 @@ export class Bridge {
     if (existing && existing.profile !== this.opts.profile) throw new Error('saved binding profile differs from config; recovery paused');
     if (existing?.thread_id && b.threadId && existing.thread_id !== b.threadId) throw new Error('saved thread differs from config; recovery paused');
     if (!b.threadId && existing?.thread_id) b.threadId = existing.thread_id;
+    if (this.desktopInbox) {
+      // Keep the registered identity untouched. Do not resume or register the
+      // former executor, and never take the desktop owner's writer lock.
+      if (!b.threadId || !b.convId || !b.desktopThreadId) throw new Error('desktop_inbox identity is incomplete');
+      if (existing?.conv_id && existing.conv_id !== b.convId) throw new Error('saved conversation differs from config');
+      const current = await this.relay.me({ conv_id: b.convId });
+      if (current?.conv_id !== b.convId || current.thread_id !== b.threadId || current.profile !== this.opts.profile
+        || current.project !== b.project) throw new Error('desktop_inbox authenticated identity differs from configuration');
+      await this.desktopInbox.verifyTarget(b.desktopThreadId);
+      await this.state.saveBinding(b.alias, this.opts.profile, b.threadId, b.convId);
+      this.byAlias.set(b.alias, b);
+      this.bindConv(b.convId, b);
+      return;
+    }
     if (this.desktopDelivery || this.nativeDelivery) {
       if (!b.threadId || !(b.convId ?? existing?.conv_id) || !b.desktopThreadId) {
         throw new Error('queued delivery requires an existing exact execution thread, conversation and desktop target');
@@ -338,12 +402,21 @@ export class Bridge {
     }
     if (!receipt) {
       await this.state.saveBootstrap(p.alias, { status: 'creating_thread' });
-      const threadId = await this.codex.threadStart(this.opts.model, this.opts.cwd, p.alias);
+      const threadId = this.desktopInbox ? p.desktopThreadId! : await this.codex.threadStart(this.opts.model, this.opts.cwd, p.alias);
+      if (this.desktopInbox) await this.desktopInbox.verifyTarget(threadId);
       await this.state.saveBinding(p.alias, this.opts.profile, threadId);
-      receipt = { status: 'ready', thread_id: threadId };
+      receipt = { status: 'ready', thread_id: threadId, ...(this.desktopInbox ? { execution_mode: 'desktop_inbox' } : {}) };
       await this.state.saveBootstrap(p.alias, receipt);
     } else {
-      await this.codex.threadResume(receipt.thread_id);
+      if (this.desktopInbox) {
+        if (receipt.execution_mode !== 'desktop_inbox' || receipt.thread_id !== p.desktopThreadId) {
+          throw new Error('pairing receipt execution target changed; automatic redemption paused');
+        }
+        await this.desktopInbox.verifyTarget(receipt.thread_id);
+      } else {
+        if (receipt.execution_mode === 'desktop_inbox') throw new Error('pairing receipt execution mode changed');
+        await this.codex.threadResume(receipt.thread_id);
+      }
     }
     // Write intent BEFORE making a one-shot request. A timeout/crash can mean
     // the invitation was consumed: startup must not issue another request.
@@ -357,7 +430,8 @@ export class Bridge {
       throw new Error('pairing response incomplete; outcome unknown, automatic retry disabled');
     }
     const b: Binding = { alias: p.alias, role: p.role, task: p.task, ownerLabel: p.ownerLabel,
-      project: row.project, threadId: receipt.thread_id, convId: row.conv_id };
+      project: row.project, threadId: receipt.thread_id, convId: row.conv_id,
+      ...(this.desktopInbox ? { desktopThreadId: receipt.thread_id } : {}) };
     await this.opts.persistPairing({ device_id: result.device.device_id, device_token: token, binding: b,
       pairing_id: result.pairing_id, peer_conv_id: result.peer_conv_id });
     await this.state.saveBinding(b.alias, this.opts.profile, b.threadId!, b.convId);
@@ -436,6 +510,7 @@ export class Bridge {
   }
 
   private async processRequestInner(requestId: string): Promise<void> {
+    if (this.desktopInbox) return this.processDesktopRequest(requestId);
     const rec = await this.state.get(requestId);
     if (rec && ['running', 'completed', 'interrupted', 'failed', 'result_pending_verify', 'abandoned'].includes(rec.status)) {
       this.log('info', `dedupe: ${requestId} already ${rec.status}`);
@@ -524,7 +599,128 @@ export class Bridge {
     this.log('info', `completed ${requestId} turn=${turnId} status=${exec}`);
   }
 
+  private async processDesktopRequest(requestId: string): Promise<void> {
+    const inbox = this.desktopInbox!;
+    const previous = await this.state.get(requestId);
+    if (previous && ['completed', 'failed', 'interrupted', 'abandoned'].includes(previous.status)) return;
+    const meta = await this.relay.getRequest(requestId);
+    const b = this.byConv.get(meta.to_conv);
+    if (!b?.threadId || !b.desktopThreadId || meta.request_id !== requestId || !Number.isFinite(meta.expires_at)) {
+      throw new Error('desktop inbox request identity is unavailable');
+    }
+    let record = await inbox.get(requestId);
+    if (!record) {
+      // An intent from the old managed executor is not an unexecuted request.
+      // Migration must never execute it again in the desktop owner.
+      if (previous) {
+        await this.state.finish(requestId, 'result_pending_verify');
+        return;
+      }
+      if (meta.exec_status !== 'pending' || ['expired', 'rejected'].includes(meta.delivery_status) || meta.expires_at <= Date.now()) return;
+      await this.state.intent(requestId, meta.root_request_id, meta.to_conv, b.desktopThreadId, `[[relay-inbox:${requestId}]]`);
+      const request = await this.relay.claim(requestId);
+      if (request.request_id !== requestId || request.to_conv !== b.convId || typeof request.body !== 'string') {
+        throw new Error('desktop inbox claim identity differs from its binding');
+      }
+      await inbox.verifyTarget(b.desktopThreadId);
+      const permit = await this.relay.authorizeStart(requestId, 'desktop_inbox');
+      if (permit?.exec_status !== 'pending' || permit.started_at !== null || !Number.isFinite(permit.start_authorized_at)) {
+        throw new Error('Relay does not support a pending desktop queue permit; no queue add attempted');
+      }
+      const text = [`[[relay-inbox:${requestId}]]`, `${request.type} from ${request.from_conv}`,
+        '这是一条发给当前对话的跨设备请求。请在当前对话处理并回复；不创建其他执行对话或接收器。', request.body].join('\n\n');
+      record = await inbox.enqueue({ requestId, convId: b.convId!, identityThreadId: b.threadId,
+        targetThreadId: b.desktopThreadId, text });
+      this.log('info', `desktop inbox queued or uncertain ${requestId}; owner execution remains unconfirmed`);
+    }
+    inbox.assertBinding(record, b.convId!, b.threadId, b.desktopThreadId);
+    if (previous && previous.thread_id !== record.targetThreadId) throw new Error('desktop dispatch target differs from its checkpoint');
+    if (record.status === 'cancelled') {
+      await this.state.finish(requestId, 'abandoned');
+      return;
+    }
+    const unavailable = ['expired', 'rejected'].includes(meta.delivery_status) || meta.expires_at <= Date.now()
+      || record.cancelRequested === true;
+    if (unavailable && !record.turnId) {
+      if (await inbox.cancel(record)) await this.state.finish(requestId, 'abandoned');
+      else await this.state.finish(requestId, 'result_pending_verify');
+      return;
+    }
+    let turn: any;
+    try { turn = await inbox.observe(record); }
+    catch {
+      await this.state.finish(requestId, 'result_pending_verify');
+      this.log('warn', `desktop inbox history cannot verify ${requestId}; no second add or result`);
+      return;
+    }
+    if (!turn) return; // queued/uncertain is not executed, even after a long wait
+    record = { ...record, status: 'observed', turnId: turn.id };
+    await inbox.save(record);
+    await this.state.recordTurn(requestId, turn.id);
+    try {
+      const started = await this.relay.start(requestId, turn.id);
+      if (started?.turn_id !== turn.id) {
+        await this.state.finish(requestId, 'result_pending_verify');
+        return;
+      }
+      {
+        // STATUS can change the request row both before and after a RESULT.
+        // Always verify the canonical report, independent of current row status.
+        const snapshot = await this.relay.readResult(requestId);
+        if (snapshot?.request?.request_id !== requestId || snapshot.request.to_conv !== b.convId
+          || snapshot.request.turn_id !== turn.id || !Array.isArray(snapshot.results)) {
+          await this.state.finish(requestId, 'result_pending_verify');
+          return;
+        }
+        const canonical = snapshot.results.filter((r: any) => r.kind === 'RESULT' && r.is_first === true);
+        if (canonical.length) {
+          const report = canonical[0];
+          const status = report.exec_status ?? 'completed';
+          const matches = canonical.length === 1 && report.request_id === requestId
+            && report.evidence === `codex-thread:${b.desktopThreadId}#turn:${turn.id}`
+            && ['completed', 'failed', 'interrupted'].includes(turn.status) && status === turn.status
+            && typeof report.body === 'string' && Boolean(report.body) && report.body === lastAgentMessage(turn);
+          await this.state.finish(requestId, matches ? status : 'result_pending_verify');
+          return;
+        }
+        // A terminal STATUS alone proves no return. Keep observing until actual
+        // desktop history has an answer; nonterminal states continue below.
+        if (['completed', 'failed', 'interrupted'].includes(started.exec_status)
+          && !['completed', 'failed', 'interrupted'].includes(turn.status)) {
+          await this.state.finish(requestId, 'result_pending_verify');
+          return;
+        }
+      }
+      if (!['running', 'waiting_user', 'result_pending_verify', 'completed', 'failed', 'interrupted'].includes(started.exec_status)) {
+        await this.state.finish(requestId, 'result_pending_verify');
+        return;
+      }
+    } catch {
+      await this.state.finish(requestId, 'result_pending_verify');
+      return;
+    }
+    if (!['completed', 'failed', 'interrupted'].includes(turn.status)) return;
+    const text = lastAgentMessage(turn);
+    if (!text) {
+      await this.state.finish(requestId, 'result_pending_verify');
+      return; // Do not fabricate a desktop owner's report from a status stub.
+    }
+    await this.submitWithOutbox(requestId, { conv_id: b.convId, kind: 'RESULT', exec_status: turn.status,
+      turn_id: turn.id, body: text, evidence: `codex-thread:${b.desktopThreadId}#turn:${turn.id}`,
+      result_missing: turn.status !== 'completed' });
+    await this.state.finish(requestId, turn.status);
+  }
+
   private async onCancel(requestId: string): Promise<void> {
+    if (this.desktopInbox) {
+      const record = await this.desktopInbox.get(requestId);
+      if (record) {
+        record.cancelRequested = true;
+        await this.desktopInbox.save(record);
+        await this.processRequest(requestId);
+      }
+      return;
+    }
     const rec = await this.state.get(requestId);
     if (!rec || !rec.turn_id || rec.status !== 'running') return;
     const binding = this.byConv.get(rec.to_conv);
@@ -540,6 +736,15 @@ export class Bridge {
   /** T1 push delivery: a result for a conversation we own becomes a new turn. */
   private async deliverResultToConversation(requestId: string, resultId?: string): Promise<void> {
     if (this.stopping) return;
+    if (this.desktopInbox) {
+      const snapshot = await this.readDesktopReports(requestId);
+      // The destination already executed in this exact desktop conversation.
+      // Only reports for locally originated requests become new display input.
+      if (snapshot.request.to_conv === snapshot.localConvId) return;
+      const reports = resultId ? snapshot.eligible.filter((r: any) => r.result_id === resultId) : snapshot.eligible;
+      for (const report of reports) await this.deliverDesktopReport(snapshot, report);
+      return;
+    }
     if (this.isQueuedDeliveryMode()) {
       await this.maybeReplayDesktop(requestId, resultId, resultId === undefined);
       return;
@@ -736,6 +941,16 @@ export class Bridge {
 
   async reconcile(): Promise<{ adopted: number; ambiguous: number; restarted: number; pending: number }> {
     const result = { adopted: 0, ambiguous: 0, restarted: 0, pending: 0 };
+    if (this.desktopInbox) {
+      for (const rec of await this.state.listUnfinished()) {
+        if (this.stopping) break;
+        await this.processRequest(rec.request_id);
+        const after = await this.state.get(rec.request_id);
+        if (after && ['completed', 'failed', 'interrupted'].includes(after.status)) result.adopted++;
+        else result.pending++;
+      }
+      return result;
+    }
     for (const rec of await this.state.listUnfinished()) {
       const binding = this.byConv.get(rec.to_conv);
       if (!binding?.threadId) {
@@ -853,6 +1068,8 @@ export class Bridge {
 
   async stop(): Promise<void> {
     this.stopping = true;
+    if (this.desktopPoll) clearInterval(this.desktopPoll);
+    await this.desktopScan;
     this.relay?.close();
     await this.codex?.close();
   }

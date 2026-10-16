@@ -1,4 +1,4 @@
-# 新设备接入：一次性配对 + 原生桌面对话（v0.2.3）
+# 新设备接入：一次性配对 + 原接入桌面对话
 
 本页回答“如何接入”；接好之后的能力、操作示例和实际边界见 [接入后能做什么](../usage-guide.md)。
 
@@ -7,14 +7,14 @@
 ## 给接收者的一段话
 
 ```text
-请把本设备接入 https://github.com/gdszyy/codex-cross-chat，并让跨设备报告以 Codex 原生“从另一项任务发送”的气泡出现在当前桌面对话。复用已有仓库和依赖；没有才 clone，检查远端最新版并按锁文件安装。阅读 docs/handover/HANDOVER-deviceB.md、docs/pairing.md、docs/native-task-messages.md，以 docs/access-guide.md 为权威。你已获准新建一个本机“跨设备接收器”对话，仅向当前这个真实桌面对话转发验证过的报告，并使用必要的接收器设置及转发模型轮。先检查 Node/pnpm、已登录 Codex CLI、公开队列/原生发送工具，准备仓库和 ~/.codex 外的短路径私密配置、state 和 native inbox，核实真实接收器及目标 thread_id；准备完成再让我提供邀请方主动生成的十分钟一次性配对码。新设备用 bindings=[]、不填 device_token 的配对配置启动 Bridge，仅兑换一次；凭证由服务直接发到本机。成功核对并安全保存后删除已消费的码文件，记录 conv_id、peer_conv_id、pairing_id。若已有有效绑定就保留原凭证、配对和执行状态，不重新配对。然后按文档串行切到 native_task，保留原执行 threadId/convId/state_dir，填写真实 desktopThreadId、nativeReceiverThreadId 和固定 native_inbox_dir，保持一个 Bridge 常驻。不要直接修改 ~/.codex，不输出或提交密钥。用已有 relay MCP；没有动态接入口则用仓库 RelayClient 从本机私密配置读 token。核实 ws open、health=200/db=postgres、双方身份和配对；双方在线后各发一个全新根 QUERY，每条业务最多一轮，接收器和桌面呈现轮另计，不用 QUERY 要求对端再发 QUERY。缺少对端零模型发送入口时，准备读取对端自身配置的脚本给我转交，不索要对端 token。报告两个 request_id、三层状态、真实 relay_read/evidence 和两端原生气泡证据，缺什么明确写未通过。禁止 mock 冒充实测、重跑通知正文、自动回信或盲重试；配对码失效、兑换未知或关键协议不符时停止受影响动作并如实报告。完成后不要停止 Bridge。
+请把本设备接入 https://github.com/gdszyy/codex-cross-chat，只在当前这个原接入桌面对话接收并处理来信，不新建执行对话或“跨设备接收器”，不要求跨任务来源行。复用已有仓库和依赖，检查远端最新版；首次安装按锁文件准备。阅读 docs/handover/HANDOVER-deviceB.md、docs/pairing.md、docs/desktop-inbox.md，以 docs/access-guide.md 为权威。核实当前原对话准确UUID、匹配桌面历史结构的公开App Server运行时以及metadata/完整分页历史/队列的真实可用性；Relay须支持desktop_inbox许可。准备仓库及~/.codex外的私密配置和state，再让我提供十分钟配对码。新设备从一开始用execution_mode=desktop_inbox、bindings=[]，pairing.desktopThreadId填当前原对话UUID，不填其他设备token；仅兑换一次，由服务把独立凭证保存在本机。已有配对则保留device_id/device_token、conv_id、注册threadId、pairing和state_dir，先确认无在途任务，停止旧Bridge，再按desktop-inbox文档迁移desktopThreadId和配置，不重新配对、不冒用lost_local_thread重绑。不要创建/恢复额外执行线程、不要抢占桌面writer，不改~/.codex或历史数据库，不输出或提交密钥。只保留一个Bridge；公开队列accepted不是执行成功，必须核对原对话真实消费、唯一轮次、真实relay_read/evidence和没有新增对话。已有relay MCP优先，无入口则用仓库RelayClient读取本机私密token。旧额外对话待迁移验证和责任交接后才能退出，不删状态或未知作业。失效配对码、兑换未知、协议或权限不符时停止受影响动作如实报告，禁止mock、盲重试、自动回信或转派。业务测试每请求最多一轮；缺少对端零模型发送入口时准备不含凭证的脚本给我转交，不用QUERY要求模型再发QUERY。完成后报告版本/提交、原桌面ID、conv_id、pairing_id、Bridge PID、health/WS/roster和真实请求结果，保持Bridge运行。
 ```
 
 ## 1. 前置
 
-Node ≥20（建议22）、pnpm 10.33.0、git、已登录且支持 app-server 的 Codex CLI；原生呈现还需要 Codex 桌面及实际原生发送工具。当前验证载体为 Codex CLI **0.149.0**；其他版本先核公开协议，不能只凭版本号声称兼容。接入不要求修改 ~/.codex。
+Node ≥20（建议22）、pnpm 10.33.0、git、已登录且支持 app-server 的公开 Codex 运行时和实际原桌面对话。旧 managed/native_task 的验证载体为 CLI **0.149.0**；它已实际不能解析新版桌面的一类历史记录，不能据旧验证推荐它用于 desktop_inbox。新模式的只读协议预检使用桌面自带 **0.162.0-alpha.17.2** 成功读取 metadata、队列和完整历史；这还不是完整新模式物理实测。各机应选择匹配桌面结构的运行时并真实预检，不能只凭版本号声称兼容。接入不要求修改 ~/.codex。
 
-先完成仓库、依赖、私密短路径目录、CLI 与原生接收器能力准备，再申请十分钟配对码，避免准备过程中耗尽有效期。已有仓库先检查分支/改动并 fetch；不能覆盖未提交工作。已有依赖且锁文件未变时复用，不重复安装。下列命令用于首次安装：
+先完成仓库、依赖、私密短路径目录和原对话公开API能力准备，再申请十分钟配对码，避免准备过程中耗尽有效期。已有仓库先检查分支/改动并 fetch；不能覆盖未提交工作。已有依赖且锁文件未变时复用，不重复安装。下列命令用于首次安装：
 
 ```bash
 git clone https://github.com/gdszyy/codex-cross-chat.git
@@ -24,7 +24,13 @@ pnpm install --frozen-lockfile
 
 最新版接入文档以 GitHub 默认分支为准，记录实际代码提交；本次已验证的程序发布版为 v0.2.3，文档后续更新不会移动版本标签。没有原生发送工具时，可以报告通信准备情况，但不能把普通 desktop_queue 消息当成原生气泡通过。
 
-如果发现本机已有有效配置：保留 device_id/device_token、convId、执行 threadId、state_dir 和配对；按下文配置原生呈现，不申请新码、不重建身份。
+如果发现本机已有有效配置：保留 device_id/device_token、convId、注册 threadId、state_dir 和配对；按 [单原对话迁移](../desktop-inbox.md#已配对设备迁移) 配置，不申请新码、不重建身份。
+
+## 推荐：从首次接入就使用原对话
+
+按 [desktop_inbox](../desktop-inbox.md) 和 [配置样例](../desktop-inbox-config.example.json) 准备：配置中设置 `execution_mode: "desktop_inbox"`；新设备保留空 bindings，在 pairing 中显式填写准确原桌面的 `desktopThreadId`，不设置旧 result_delivery_mode/native_inbox_dir，也不创建原生接收器。先核实服务端能力及匹配运行时再兑换，成功安全保存后仅用原配置重启。服务端/公开API不可用时停止，不自动退回下面的三角色路径。
+
+下面第3、4节保留给**明确选择旧 managed/native_task 模式**的设备，不是推荐单原对话的步骤；其额外对话和转发开销须另有用户明确授权。
 
 ## 2. A 主动邀请
 
@@ -36,7 +42,7 @@ node --import tsx packages/bridge/src/pairing-cli.ts invite --config <A的私密
 
 把生成的配对码私密交给 B。不要在公布对话时自动邀请。
 
-## 3. B 配置与启动
+## 3. 旧 managed/native_task：B 配置与启动
 
 推荐把 docs/pairing-config.example.json 复制到仓库外的私密短路径目录，设置本机有效 cwd、仓库/.codex 外的短路径 state_dir，并选本机支持且用户允许的 model。该样例以 manual_read 完成首次引导，不含长期设备令牌，bindings 为空，通过 pairing 声明 B 的对话。不要复制 A 的凭证或线程 ID。配对后的项目继承 A。也可从旧 bridge-config.example.json 删除占位 device_token、清空 bindings 后加入：
 
@@ -57,9 +63,9 @@ node --import tsx packages/bridge/src/index.ts --config <仓外配置路径> --p
 
 核实 Bridge 回执和安全保存的配置确实包含本设备的 device_id/device_token、conv_id、peer_conv_id、pairing_id，随后删除已消费的配对码文件，不打印码或 token。Bridge 把新凭证保存到 B 本机配置后常驻运行。成功后普通重启只传 --config，不再传已消费的配对码。按本机平台用会话保活或后台进程方式保持 Bridge 常驻，并记录实际 PID。
 
-## 4. 绑定原生接收器与当前桌面对话
+## 4. 旧 native_task：绑定额外原生接收器
 
-用户粘贴本页指令即明确授权新建专用原生接收器及必要模型转发开销。取得真实 receiver UUID 和当前桌面对话 UUID，按 [固定接收器协议](../native-task-messages.md#给接收器的固定协议) 设置准确仓库 cwd、固定 inbox 和唯一目标。接收器必须实际具备原生 send_message_to_thread 和 shell，不能只写了提示词就宣布就绪。
+只有用户另行明确选择跨任务来源行、授权额外原生接收器及模型转发开销时，才执行本节；推荐粘贴块不包含该授权。取得真实 receiver UUID 和当前桌面对话 UUID，按 [固定接收器协议](../native-task-messages.md#给接收器的固定协议) 设置准确仓库 cwd、固定 inbox 和唯一目标。接收器必须实际具备原生 send_message_to_thread 和 shell，不能只写了提示词就宣布就绪。
 
 确认无在途执行后停止本机旧 Bridge，备份仓库外私密配置。保持配对后的身份和原 state_dir，仅加入 result_delivery_mode=native_task、绝对 native_inbox_dir、绑定中的 desktopThreadId 和 nativeReceiverThreadId；再按原命令只传 --config 启动一个 Bridge。不能同时运行两个进程打开同一执行状态库，也不能为切换而丢掉已有 native inbox/claim。保持接收器及目标在桌面加载；应用关闭/重启后的自动加载没有承诺。原生来源是本机接收器，远端 conv_id 留在正文。
 
@@ -72,10 +78,10 @@ node --import tsx packages/bridge/src/index.ts --config <仓外配置路径> --p
 3. relay_inbox 检查待办，核对 Bridge WebSocket 和心跳。presence.online 仅代表近期活跃。
 4. A→B 和 B→A 各由发起设备独立发送一个全新根 QUERY，保存发送意图和 client_key；相同发送结果不明时不重复 POST。每条业务最多一轮，新增接收器设置/转发及桌面呈现轮分别计，不宣称全链路总共一轮。不要通过额外 QUERY 让对端模型替你发 QUERY。
 5. 逐个 request_id 调 relay_status/getRequest 和 relay_read/readResult，核真实正文、evidence、业务 turn_id 与 result_missing。cloud_saved 只代表云端保存，不等于对端屏幕已经显示。
-6. 两边分别核实准确桌面对话中有原生来源行及同一请求的真实报告。另一台屏幕不可读取时，请 Owner 按准确 request_id 确认或提供截图；未确认前保留该项未通过，不编造回执。缺少对端零模型入口时先准备不含凭证、在对端读取自身配置的脚本给 Owner 转交，不索要对端 token。
+6. desktop_inbox 核实新请求确实在准确原接入对话进入并执行、没有新增对话、真实结果 evidence 指向该原对话；不要求跨任务来源行。旧 native_task 则另核原生来源行和真实报告。另一台屏幕不可读取时，请 Owner 按准确 request_id 确认或提供截图；未确认前保留该项未通过，不编造回执。缺少对端零模型入口时先准备不含凭证、在对端读取自身配置的脚本给 Owner 转交，不索要对端 token。
 7. 故障三查仍见 docs/access-guide.md §7。配对码失效/已使用/撤销，请 A 重新邀请；兑换响应未知时保留本地恢复信息，先查证，不反复消费。对照真实 [v0.2.3 双向验证](../native-task-verification.md#v023-发布后的两个全新物理设备请求)。
 
-报告实际版本/提交、conv_id、peer_conv_id、pairing_id、Bridge PID、receiver/desktop UUID、health/roster、两个新 request_id、三层状态、真实回复/evidence 和两端气泡证据；未完成项逐项写明。代码回归可以使用测试床，但它不能替代本节的真实通信与界面证据。完成后保持 Bridge 运行。
+报告实际版本/提交、conv_id、peer_conv_id、pairing_id、Bridge PID、准确原 desktop UUID（旧 native_task 另列 receiver）、health/roster、两个新 request_id、三层状态、真实回复/evidence 和两端原对话证据；未完成项逐项写明。代码回归可以使用测试床，但它不能替代本节的真实通信与界面证据。完成后保持 Bridge 运行。
 
 ## 6. 解除与兼容
 

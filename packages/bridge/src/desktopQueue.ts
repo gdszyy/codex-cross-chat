@@ -107,7 +107,9 @@ export class DesktopQueueClient {
     let cursor: string | undefined;
     let match: DesktopQueuedSubmission | null = null;
     const seen = new Set<string>();
+    let pages = 0;
     for (;;) {
+      if (++pages > 1000) throw new DesktopQueueError('invalid_queue_response', 'Desktop queue inventory exceeds its complete-read limit.');
       let page: any;
       try {
         page = await this.codex.rpc('thread/queue/list', { threadId: input.threadId, limit: 100,
@@ -122,7 +124,7 @@ export class DesktopQueueClient {
         match = entry;
       }
       if (page.nextCursor === null || page.nextCursor === undefined) return match;
-      if (typeof page.nextCursor !== 'string' || !page.nextCursor || seen.has(page.nextCursor)) {
+      if (!page.data.length || typeof page.nextCursor !== 'string' || !page.nextCursor || seen.has(page.nextCursor)) {
         throw new DesktopQueueError('invalid_queue_response', 'Desktop queue pagination did not advance.');
       }
       seen.add(page.nextCursor);

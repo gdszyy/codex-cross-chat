@@ -380,7 +380,8 @@ export class Store {
         if (row.profile === profile && row.thread_id === threadId)
           throw conflict('rebind_no_change', 'the requested binding is unchanged and has no matching recovery audit');
         const active = await db.query(`SELECT request_id FROM requests WHERE (from_conv=$1 OR to_conv=$1)
-          AND exec_status IN ('running','waiting_user','result_pending_verify') LIMIT 1`, [convId]);
+          AND (exec_status IN ('running','waiting_user','result_pending_verify')
+            OR (exec_status='pending' AND start_authorized_at IS NOT NULL)) LIMIT 1`, [convId]);
         if (active.length) throw conflict('conversation_inflight', 'conversation has in-flight work; resolve it before rebinding');
         const occupied = await db.query(`SELECT conv_id FROM roster WHERE device_id=$1 AND profile=$2
           AND thread_id=$3 AND conv_id<>$4`, [deviceId, profile, threadId, convId]);
@@ -831,7 +832,7 @@ export class Store {
    * A successful grant is in flight even if its pairing is subsequently removed.
    * No turn ID is invented here; /start later records the actual local turn ID.
    */
-  async authorizeStart(requestId: string, deviceId: string): Promise<RequestRow> {
+  async authorizeStart(requestId: string, deviceId: string, executionMode: 'managed' | 'desktop_inbox' = 'managed'): Promise<RequestRow> {
     return this.db.transaction(async (db) => {
       const tx = new Store(db, this.cfg);
       const r = await tx.lockRequest(requestId);
@@ -840,11 +841,30 @@ export class Store {
       if (['completed', 'failed', 'interrupted', 'result_pending_verify'].includes(r.exec_status) ||
           r.delivery_status === 'expired' || r.delivery_status === 'rejected')
         throw conflict('request_not_startable', 'request is terminal or unavailable');
-      if (r.start_authorized_at !== null) return r;
+      if (r.turn_id !== null)
+        throw conflict('request_not_startable', 'an execution turn is already recorded; reconcile it instead of requesting a new launch');
+      if (executionMode === 'desktop_inbox' && r.exec_status !== 'pending')
+        throw conflict('request_not_startable', 'desktop queue permission is only available before execution');
+      if (r.start_authorized_at !== null) {
+        // A desktop queue grant is not proof the owner consumed the message.
+        // Do not let another execution mode convert a pending grant into a
+        // second launch, and do not renew a grant after the unstarted TTL.
+        if (r.exec_status === 'pending') {
+          if (r.expires_at <= nowMs() || executionMode !== 'desktop_inbox')
+            throw conflict('request_not_startable', 'pending desktop grant expired or execution mode differs');
+        }
+        return r;
+      }
       if (r.exec_status !== 'pending' || r.expires_at <= nowMs())
         throw conflict('request_not_startable', 'request has started or expired');
       await tx.assertCanSend(await tx.getRosterOrThrow(r.from_conv), target, r.size_bytes);
       const now = nowMs();
+      if (executionMode === 'desktop_inbox') {
+        await db.query(`UPDATE requests SET start_authorized_at=$2,
+          delivery_status='device_received', claimed_at=COALESCE(claimed_at,$2)
+          WHERE request_id=$1`, [requestId, now]);
+        return tx.getRequestOrThrow(requestId);
+      }
       await db.query(`UPDATE requests SET start_authorized_at=$2, started_at=$2,
         exec_status='running', delivery_status='device_received', claimed_at=COALESCE(claimed_at,$2)
         WHERE request_id=$1`, [requestId, now]);
@@ -857,13 +877,20 @@ export class Store {
   }
 
   private async startRequestInTransaction(requestId: string, turnId: string): Promise<RequestRow> {
+    if (typeof turnId !== 'string' || !turnId.trim() || turnId.trim() !== turnId || /[\u0000-\u001f\u007f]/.test(turnId))
+      throw bad('bad_turn_id', 'a non-empty exact turn_id is required');
     const r = await this.lockRequest(requestId);
+    if (r.delivery_status === 'expired' || r.delivery_status === 'rejected')
+      throw conflict('request_not_startable', 'request is unavailable or expired');
     if (r.start_authorized_at === null) {
       await this.assertCanSend(await this.getRosterOrThrow(r.from_conv), await this.getRosterOrThrow(r.to_conv), r.size_bytes);
     }
+    if (r.turn_id !== null) {
+      if (r.turn_id !== turnId) throw conflict('turn_mismatch', 'a different execution turn is already recorded');
+      return r;
+    }
     if (['completed', 'failed', 'interrupted', 'result_pending_verify'].includes(r.exec_status)) return r;
-    if (r.delivery_status === 'expired' || r.delivery_status === 'rejected' ||
-        (r.start_authorized_at === null && r.exec_status === 'pending' && r.expires_at <= nowMs()))
+    if (r.exec_status === 'pending' && r.expires_at <= nowMs())
       throw conflict('request_not_startable', 'request is unavailable or expired');
     await this.db.query(
       `UPDATE requests SET exec_status='running', turn_id=$2, started_at=COALESCE(started_at,$3),

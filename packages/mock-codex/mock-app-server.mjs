@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto';
 const DEFAULT_FAULT = process.env.MOCK_FAULT || 'none';
 const DELAY_MS = Number(process.env.MOCK_DELAY_MS || 50);
 const STATE_FILE = process.env.MOCK_STATE_FILE || '';
+const queued = new Map();
 
 const threads = new Map(); // id -> { id, model, turns: [{id,status,items:[]}] }
 const turns = new Map(); // turnId -> { id, threadId, status, items }
@@ -32,7 +33,7 @@ function saveState() {
   try {
     fs.writeFileSync(
       STATE_FILE,
-      JSON.stringify({ threads: [...threads.values()], turns: [...turns.values()] }),
+      JSON.stringify({ threads: [...threads.values()], turns: [...turns.values()], queued: [...queued.entries()] }),
     );
   } catch {
     /* best effort */
@@ -45,6 +46,7 @@ function loadState() {
     const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
     for (const t of data.threads ?? []) threads.set(t.id, t);
     for (const t of data.turns ?? []) turns.set(t.id, t);
+    for (const [id, entries] of data.queued ?? []) queued.set(id, entries);
   } catch {
     /* start fresh */
   }
@@ -75,7 +77,7 @@ function parseFault(text) {
 function completeTurn(turn, text) {
   if (turn.status !== 'inProgress') return;
   turn.status = 'completed';
-  turn.items.push({ type: 'agentMessage', text });
+  turn.items.push({ id: randomUUID(), type: 'agentMessage', text });
   saveState();
   notify('item/completed', { threadId: turn.threadId, turnId: turn.id, item: { type: 'agentMessage', text } });
   notify('turn/completed', {
@@ -114,6 +116,8 @@ rl.on('line', (line) => {
     return;
   }
   const { id, method, params } = msg;
+  if (process.env.MOCK_RPC_LOG_FILE) fs.appendFileSync(process.env.MOCK_RPC_LOG_FILE, JSON.stringify({ method }) + '\n');
+  if ((process.env.MOCK_FORBID_METHODS || '').split(',').includes(method)) return replyErr(id, -32600, 'fixture forbids writer methods');
   if (method === 'initialized') return;
   try {
     switch (method) {
@@ -132,7 +136,7 @@ rl.on('line', (line) => {
           thread: {
             id: t.id,
             source: 'vscode',
-            historyMode: 'legacy',
+            historyMode: t.historyMode ?? 'legacy',
             ephemeral: false,
             modelProvider: 'openai',
             model: t.model,
@@ -167,13 +171,49 @@ rl.on('line', (line) => {
         return reply(id, {
           thread: {
             id: t.id,
-            historyMode: 'legacy',
+            historyMode: t.historyMode ?? 'legacy',
             ephemeral: false,
             model: t.model,
             name: t.name ?? null,
             turns: includeTurns ? t.turns.map((x) => ({ ...x })) : undefined,
           },
         });
+      }
+      case 'thread/turns/list': {
+        const t = threads.get(params?.threadId);
+        if (!t) return replyErr(id, -32600, 'thread not found');
+        const offset = Number(params.cursor ?? 0);
+        const limit = Math.min(params.limit ?? 100, Number(process.env.MOCK_PAGE_SIZE || 100));
+        const data = t.turns.slice(offset, offset + limit).map((x) => ({ ...x, itemsView: 'full' }));
+        return reply(id, { data, nextCursor: offset + limit < t.turns.length ? String(offset + limit) : null });
+      }
+      case 'thread/queue/list': {
+        if (!threads.has(params?.threadId)) return replyErr(id, -32600, 'thread not found');
+        const all = queued.get(params.threadId) ?? [];
+        const offset = Number(params.cursor ?? 0), limit = params.limit ?? 100;
+        return reply(id, { data: all.slice(offset, offset + limit), nextCursor: offset + limit < all.length ? String(offset + limit) : null });
+      }
+      case 'thread/queue/add': {
+        const t = threads.get(params?.threadId);
+        if (!t) return replyErr(id, -32600, 'thread not found');
+        const entry = { id: randomUUID(), clientUserMessageId: params.clientUserMessageId, input: params.input };
+        const entries = queued.get(t.id) ?? [];
+        entries.push(entry); queued.set(t.id, entries); saveState();
+        if (process.env.MOCK_QUEUE_OWNER === 'consume') {
+          entries.splice(entries.indexOf(entry), 1);
+          const turn = { id: randomUUID(), threadId: t.id, status: 'inProgress', itemsView: 'full',
+            items: [{ id: randomUUID(), type: 'userMessage', clientId: process.env.MOCK_NULL_CLIENT_ID ? null : entry.clientUserMessageId, content: entry.input }] };
+          t.turns.push(turn); turns.set(turn.id, turn); saveState();
+          schedule(turn, 'MOCK DESKTOP OWNER REPLY', 'none');
+        }
+        return reply(id, { queuedSubmission: entry });
+      }
+      case 'thread/queue/delete': {
+        const entries = queued.get(params.threadId) ?? [];
+        const index = entries.findIndex((e) => e.id === params.queuedSubmissionId);
+        if (index >= 0) entries.splice(index, 1);
+        saveState();
+        return reply(id, { deleted: index >= 0 });
       }
       case 'thread/list':
         return reply(id, {

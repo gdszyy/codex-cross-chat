@@ -119,7 +119,7 @@ export async function handleHttp(
   // apart from a persistent deployment at a glance (postgres = DATABASE_URL
   // bound; pglite = ephemeral in-container storage).
   if (method === 'GET' && path === '/health') {
-    return send(res, 200, { ok: true, db: store.db.kind === 'pg' ? 'postgres' : 'pglite' });
+    return send(res, 200, { ok: true, db: store.db.kind === 'pg' ? 'postgres' : 'pglite' }, { 'x-relay-desktop-inbox': '1' });
   }
 
   const requireRoot = () => {
@@ -476,7 +476,11 @@ export async function handleHttp(
   m = path.match(/^\/v1\/requests\/([^/]+)\/authorize-start$/);
   if (method === 'POST' && m) {
     const deviceId = await requireDevice();
-    return ok(res, await store.authorizeStart(decodeURIComponent(m[1]), deviceId));
+    const body = await readBody(req);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw bad('bad_execution_mode', 'authorization body must be an object');
+    const mode = body.execution_mode === undefined ? 'managed' : body.execution_mode;
+    if (mode !== 'managed' && mode !== 'desktop_inbox') throw bad('bad_execution_mode', 'unsupported execution_mode');
+    return ok(res, await store.authorizeStart(decodeURIComponent(m[1]), deviceId, mode));
   }
 
   // Backward-compatible start/report endpoint. New bridges authorize before turnStart.

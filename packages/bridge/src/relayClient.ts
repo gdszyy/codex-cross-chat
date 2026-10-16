@@ -97,6 +97,16 @@ export class RelayClient {
 
   // ---- conversation-facing ------------------------------------------------
 
+  async supportsDesktopInbox(): Promise<boolean> {
+    try {
+      // Capability discovery never sends a credential or consumes a request.
+      const response = await fetch(this.opts.baseUrl + '/health', { signal: AbortSignal.timeout(10000) });
+      if (response.status !== 200 || response.headers.get('x-relay-desktop-inbox') !== '1') return false;
+      const body = await response.json() as any;
+      return body?.ok === true;
+    } catch { return false; }
+  }
+
   roster(filter: Record<string, string> = {}) {
     const qs = new URLSearchParams(filter).toString();
     return this.http('GET', `/v1/roster${qs ? '?' + qs : ''}`);
@@ -151,8 +161,9 @@ export class RelayClient {
     return this.http('POST', `/v1/requests/${encodeURIComponent(requestId)}/claim`, {});
   }
 
-  authorizeStart(requestId: string) {
-    return this.http('POST', `/v1/requests/${encodeURIComponent(requestId)}/authorize-start`, {});
+  authorizeStart(requestId: string, executionMode?: 'desktop_inbox') {
+    return this.http('POST', `/v1/requests/${encodeURIComponent(requestId)}/authorize-start`,
+      executionMode ? { execution_mode: executionMode } : {});
   }
 
   start(requestId: string, turnId: string) {
