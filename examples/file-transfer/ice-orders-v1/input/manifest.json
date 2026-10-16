@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "case_id": "ice-orders-v1",
+  "purpose": "Public non-sensitive CSV file-flow test",
+  "files": [
+    {
+      "path": "examples/file-transfer/ice-orders-v1/input/orders.csv",
+      "bytes": 53,
+      "sha256": "4c19d09680399da7414f7a6098b2d086a7c88467f2aa2bf1a04c9a038ce2ead4"
+    }
+  ],
+  "expected_output": [
+    "order-summary.json",
+    "orders-returned.csv",
+    "manifest.json"
+  ]
+}

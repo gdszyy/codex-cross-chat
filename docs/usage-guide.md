@@ -63,6 +63,8 @@ native_task 当前显示的是**已处理的通信报告**，其中包含原来�
 
 ## 用这个 GitHub 仓库做文件中转
 
+统一目录、清单字段、责任和状态判定以 [文件流转规范 V1](file-transfer-protocol.md) 为准；可直接使用 [ICE 订单案例](../examples/file-transfer/ice-orders-v1/README.md) 开始协助测试。
+
 采用本仓 `https://github.com/gdszyy/codex-cross-chat` 存放文件，Relay 传递任务和文件引用。当前没有附件上传接口；以下流程复用现有 Git 和 Relay 能力，不会自动扫描、上传或下载本机所有文件。
 
 ```mermaid
