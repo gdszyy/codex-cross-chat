@@ -1,0 +1,20 @@
+{
+  "transfer_id": "20261016-c-nza0c7-1031",
+  "purpose": "public non-sensitive physical file roundtrip fixtures",
+  "files": [
+    {
+      "path": "transfers/20261016-c-nza0c7-1031/input/message.txt",
+      "bytes": 184,
+      "sha256": "e2efc4fc231af2f559aa6163a3c1fbafe01b46990b189ede31d70486d1aff04a"
+    },
+    {
+      "path": "transfers/20261016-c-nza0c7-1031/input/sample.bin",
+      "bytes": 1056,
+      "sha256": "cb51ee843c6079dcbc8b377780ea6f81c47e700194043615618f3ead1943fcd1"
+    }
+  ],
+  "outputs": {
+    "binary": "transfers/20261016-c-nza0c7-1031/output/sample-returned.bin",
+    "receipt": "transfers/20261016-c-nza0c7-1031/output/receipt.json"
+  }
+}

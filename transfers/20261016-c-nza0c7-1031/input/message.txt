@@ -1,0 +1,4 @@
+真实跨设备文件往返测试
+transfer_id=20261016-c-nza0c7-1031
+read_challenge=83859ff10c888caed799b267
+请逐字读取本文件并将全文写入回执的 input_text_verbatim。
