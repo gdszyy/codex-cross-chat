@@ -3,7 +3,7 @@ import { DesktopDelivery, type DesktopDeliveryState, type DesktopDeliveryReceipt
 import { NativeJobStore } from './nativeJobStore.js';
 
 export interface NativeDeliveryInput {
-  key: string; receiverThreadId: string; targetThreadId: string; text: string;
+  key: string; receiverThreadId: string; targetThreadId: string; text: string; legacyText?: string;
   requestId: string; resultId: string; localConvId: string;
 }
 export interface NativeDeliveryReceipt extends DesktopDeliveryReceipt {
@@ -27,7 +27,7 @@ export class NativeTaskDelivery {
     await this.verifyTargets(input.receiverThreadId, input.targetThreadId);
     const job = await this.jobs.prepare({ key: `native-forward:${input.key}`, receiverThreadId: input.receiverThreadId,
       targetThreadId: input.targetThreadId, requestId: input.requestId, resultId: input.resultId,
-      localConvId: input.localConvId, text: input.text });
+      localConvId: input.localConvId, text: input.text }, input.legacyText);
     const priorClaim = await this.jobs.status(job.id);
     const priorQueue = await this.jobs.getDesktopDelivery(job.key);
     if (priorClaim && !priorQueue) {

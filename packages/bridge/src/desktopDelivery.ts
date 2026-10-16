@@ -8,7 +8,11 @@ export interface DesktopDeliveryState {
   saveDesktopDelivery(key: string, value: unknown): Promise<void>;
 }
 
-export interface DesktopDeliveryInput { key: string; threadId: string; text: string }
+export interface DesktopDeliveryInput {
+  key: string; threadId: string; text: string;
+  /** Only newly prepared notifications use this format; legacy intents keep old bytes. */
+  format?: 'plain_v2'; legacyText?: string;
+}
 export interface DesktopDeliveryReceipt {
   status: 'queued';
   accepted: true;
@@ -24,6 +28,7 @@ interface DeliveryRecord {
   textHash: string;
   status: 'prepared' | 'queued' | 'uncertain';
   queuedSubmissionId?: string;
+  format?: 'plain_v2';
 }
 
 export class DesktopDeliveryError extends Error {
@@ -46,6 +51,22 @@ export class DesktopDelivery {
   async deliver(input: DesktopDeliveryInput): Promise<DesktopDeliveryReceipt> {
     if (!input.key || typeof input.key !== 'string' || !input.text || typeof input.text !== 'string') {
       throw new DesktopDeliveryError('invalid_notification', 'Desktop notification key and text are required.');
+    }
+    // Select bytes using durable intent, before comparing hashes. Reformatting
+    // an existing key must never cause a second add or discard its old receipt.
+    if (input.format === 'plain_v2') {
+      let prior: any;
+      try { prior = await this.state.getDesktopDelivery(input.key); }
+      catch { throw new DesktopDeliveryError('checkpoint_unavailable', 'Desktop notification checkpoint could not be read.'); }
+      if (prior?.format !== undefined && prior.format !== 'plain_v2') {
+        throw new DesktopDeliveryError('invalid_checkpoint', 'Unknown desktop notification format; no send attempted.');
+      }
+      if (prior && prior.format === undefined) {
+        if (typeof input.legacyText !== 'string' || !input.legacyText) {
+          throw new DesktopDeliveryError('legacy_format_required', 'Existing notification retains its original format; no send attempted.');
+        }
+        input = { ...input, text: input.legacyText, format: undefined };
+      }
     }
     const textHash = hash(input.text);
     const active = this.inFlight.get(input.key);
@@ -80,7 +101,7 @@ export class DesktopDelivery {
     try { prior = await this.state.getDesktopDelivery(input.key); }
     catch { throw new DesktopDeliveryError('checkpoint_unavailable', 'Desktop notification checkpoint could not be read.'); }
     let record: DeliveryRecord = { version: 1, key: input.key, threadId: input.threadId, clientUserMessageId,
-      textHash, status: 'prepared' };
+      textHash, status: 'prepared', ...(input.format ? { format: input.format } : {}) };
     if (prior) {
       if (prior.version !== 1 || !['prepared', 'queued', 'uncertain'].includes(prior.status) || prior.key !== input.key) {
         throw new DesktopDeliveryError('invalid_checkpoint', 'Desktop notification checkpoint has an unexpected shape.');

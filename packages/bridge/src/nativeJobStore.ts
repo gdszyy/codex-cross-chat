@@ -69,15 +69,18 @@ export class NativeJobStore implements DesktopDeliveryState {
       || !/^c-[a-zA-Z0-9_-]+$/.test(job.localConvId) || typeof job.text !== 'string' || !job.text
       || job.textHash !== nativeHash(job.text)) throw new Error('Native job identity or content is invalid');
   }
-  async prepare(input: Omit<NativeJob, 'id' | 'version' | 'textHash'>): Promise<NativeJob> {
+  async prepare(input: Omit<NativeJob, 'id' | 'version' | 'textHash'>, legacyText?: string): Promise<NativeJob> {
     const job: NativeJob = { ...input, version: 1, id: nativeHash(input.key), textHash: nativeHash(input.text) };
     this.validate(job);
     await fs.promises.mkdir(this.dir, { recursive: true, mode: 0o700 });
     const file = this.file(job.id, '.job.json');
     const matchingPrior = async () => {
       const prior = await this.read(job.id);
-      const fields = ['version', 'id', 'key', 'receiverThreadId', 'targetThreadId', 'requestId', 'resultId', 'localConvId', 'text', 'textHash'] as const;
+      const fields = ['version', 'id', 'key', 'receiverThreadId', 'targetThreadId', 'requestId', 'resultId', 'localConvId'] as const;
       if (fields.some((field) => prior[field] !== job[field])) throw new Error('Native job target or content changed; no resend');
+      const sameCurrent = prior.text === job.text && prior.textHash === job.textHash;
+      const frozenLegacy = typeof legacyText === 'string' && prior.text === legacyText && prior.textHash === nativeHash(legacyText);
+      if (!sameCurrent && !frozenLegacy) throw new Error('Native job target or content changed; no resend');
       return prior;
     };
     if (fs.existsSync(file)) {
